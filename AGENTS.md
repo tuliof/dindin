@@ -1,5 +1,11 @@
 # Ultracite Code Standards
 
+## Public Repo Data Safety
+
+No real financial data, credentials, account identifiers, or provider payloads may be committed to the repository. Treat the repository as public. Keep personal and account information out of code, comments, example data, mocks, and logs.
+
+---
+
 This project uses **Ultracite**, a zero-config preset that enforces strict code quality standards through automated formatting and linting.
 
 ## Quick Reference
