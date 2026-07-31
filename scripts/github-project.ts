@@ -1,6 +1,19 @@
 #!/usr/bin/env bun
 
 type JsonRecord = Record<string, unknown>;
+interface TaskRow {
+  agent: string | null;
+  blockedBy: number[];
+  issue: number;
+  labels: unknown;
+  parent: number | null;
+  priority: string | null;
+  size: string | null;
+  status: string;
+  subIssueCount: number;
+  title: string;
+  url: string;
+}
 
 declare const Bun: {
   spawn: (
@@ -23,6 +36,7 @@ type StatusName = (typeof STATUS_NAMES)[number];
 const projectNumber = process.env.GITHUB_PROJECT ?? DEFAULT_PROJECT;
 const projectOwner = process.env.GITHUB_PROJECT_OWNER ?? DEFAULT_OWNER;
 const repository = process.env.GITHUB_REPOSITORY ?? DEFAULT_REPOSITORY;
+const OWNER_PATTERN = /^## Owner\n([^\n]+)/m;
 
 function fail(message: string): never {
   throw new Error(message);
@@ -168,6 +182,118 @@ function findItem(items: JsonRecord[], number: number): JsonRecord {
   return item ?? fail(`Issue #${number} is not in project ${projectNumber}`);
 }
 
+function repositoryIssues(): Promise<JsonRecord[]> {
+  return runJson<JsonRecord[]>([
+    "issue",
+    "list",
+    "--repo",
+    repository,
+    "--state",
+    "all",
+    "--limit",
+    "1000",
+    "--json",
+    "number,title,url,parent,blockedBy,subIssues",
+  ]);
+}
+
+function agentOwner(item: JsonRecord): string | undefined {
+  const body = String((item.content as JsonRecord | undefined)?.body ?? "");
+  return body.match(OWNER_PATTERN)?.[1];
+}
+
+function blockedByNumbers(issue: JsonRecord): number[] {
+  const blockedBy = issue.blockedBy as JsonRecord | undefined;
+  const nodes = Array.isArray(blockedBy?.nodes)
+    ? blockedBy.nodes.filter(
+        (node): node is JsonRecord => typeof node === "object" && node !== null
+      )
+    : [];
+  return nodes
+    .map((node) => node.number)
+    .filter((number): number is number => typeof number === "number");
+}
+
+async function taskRows(): Promise<TaskRow[]> {
+  const [items, issues] = await Promise.all([
+    projectItems(),
+    repositoryIssues(),
+  ]);
+  const issuesByNumber = new Map(
+    issues
+      .filter((issue) => typeof issue.number === "number")
+      .map((issue) => [issue.number as number, issue])
+  );
+
+  return items.flatMap((item) => {
+    const number = issueNumber(item);
+    const issue = number === undefined ? undefined : issuesByNumber.get(number);
+    if (!issue) {
+      return [];
+    }
+    return [
+      {
+        agent: agentOwner(item) ?? null,
+        blockedBy: blockedByNumbers(issue),
+        issue: number,
+        labels: item.labels ?? [],
+        parent:
+          Number((issue.parent as JsonRecord | undefined)?.number) || null,
+        priority: item.priority ? String(item.priority) : null,
+        size: item.size ? String(item.size) : null,
+        status: normalizeOption(String(item.status ?? "missing")),
+        subIssueCount: Number(
+          (issue.subIssues as JsonRecord | undefined)?.totalCount ?? 0
+        ),
+        title: String(item.title),
+        url: String(issue.url),
+      },
+    ];
+  });
+}
+
+function taskSort(left: TaskRow, right: TaskRow): number {
+  const priorityOrder = ["P0", "P1", "P2"];
+  const sizeOrder = ["XS", "S", "M", "L", "XL"];
+  const priorityDifference =
+    priorityOrder.indexOf(String(left.priority)) -
+    priorityOrder.indexOf(String(right.priority));
+  if (priorityDifference !== 0) {
+    return priorityDifference;
+  }
+  const sizeDifference =
+    sizeOrder.indexOf(String(left.size)) -
+    sizeOrder.indexOf(String(right.size));
+  if (sizeDifference !== 0) {
+    return sizeDifference;
+  }
+  return Number(left.issue) - Number(right.issue);
+}
+
+async function ready(agent?: string): Promise<void> {
+  const rows = await taskRows();
+  const tasks = rows
+    .filter(
+      (row) =>
+        row.status === "todo" &&
+        row.blockedBy.length === 0 &&
+        row.subIssueCount === 0 &&
+        (!agent || row.agent === agent)
+    )
+    .sort(taskSort);
+  print(tasks);
+}
+
+async function blocked(agent?: string): Promise<void> {
+  const rows = await taskRows();
+  const tasks = rows
+    .filter(
+      (row) => row.blockedBy.length > 0 && (!agent || row.agent === agent)
+    )
+    .sort(taskSort);
+  print(tasks);
+}
+
 async function setField(
   issue: number,
   fieldName: string,
@@ -254,18 +380,7 @@ async function show(issue: number): Promise<void> {
 async function reconcile(): Promise<void> {
   const [items, issues] = await Promise.all([
     projectItems(),
-    runJson<JsonRecord[]>([
-      "issue",
-      "list",
-      "--repo",
-      repository,
-      "--state",
-      "all",
-      "--limit",
-      "1000",
-      "--json",
-      "number,title,url,parent,blockedBy",
-    ]),
+    repositoryIssues(),
   ]);
   const issueNumbers = new Set(issues.map((issue) => issue.number));
   const projectNumbers = new Set(
@@ -321,19 +436,36 @@ async function reconcile(): Promise<void> {
   });
 }
 
-async function main(): Promise<void> {
-  const { command, options } = parseArgs(process.argv.slice(2));
-
+async function runSimpleCommand(
+  command: string,
+  options: Map<string, string>
+): Promise<boolean> {
   if (command === "list") {
     await list();
-    return;
+    return true;
   }
   if (command === "summary") {
     await summary();
-    return;
+    return true;
   }
   if (command === "reconcile" || command === "verify") {
     await reconcile();
+    return true;
+  }
+  if (command === "ready") {
+    await ready(options.get("agent"));
+    return true;
+  }
+  if (command === "blocked") {
+    await blocked(options.get("agent"));
+    return true;
+  }
+  return false;
+}
+
+async function main(): Promise<void> {
+  const { command, options } = parseArgs(process.argv.slice(2));
+  if (await runSimpleCommand(command, options)) {
     return;
   }
 
