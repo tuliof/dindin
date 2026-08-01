@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   aggregateChecks,
   mergePreconditionFailures,
+  parseIssueNumber,
   parsePullRequestReference,
   prStatusReport,
 } from "./github-project";
@@ -15,6 +16,12 @@ describe("GitHub project PR helpers", () => {
     expect(() =>
       parsePullRequestReference("https://github.com/tuliof/dindin/issues/42")
     ).toThrow("Invalid pull request reference");
+  });
+
+  test("rejects non-decimal issue-number syntax before parsing", () => {
+    for (const value of ["1e3", "0x10", " 10", "10 ", "+10", "0"]) {
+      expect(() => parseIssueNumber(value)).toThrow("--issue");
+    }
   });
 
   test("aggregates completed, pending, and failed checks deterministically", () => {
@@ -89,6 +96,7 @@ describe("GitHub project PR helpers", () => {
             { conclusion: "FAILURE", name: "failed", status: "COMPLETED" },
           ],
         },
+        42,
         "in-progress"
       )
     ).toEqual([
@@ -97,6 +105,25 @@ describe("GitHub project PR helpers", () => {
       "PR is not mergeable: CONFLICTING",
       "PR merge state is not clean: DIRTY",
       "Linked project task is not in review: in-progress",
+      "PR does not reference issue #42",
     ]);
+  });
+
+  test("blocks merging a PR that references another issue", () => {
+    expect(
+      mergePreconditionFailures(
+        {
+          closingIssuesReferences: [{ number: 7 }],
+          commits: [{ oid: "commit" }],
+          isDraft: false,
+          mergeable: "MERGEABLE",
+          mergeStateStatus: "CLEAN",
+          state: "OPEN",
+          statusCheckRollup: [],
+        },
+        42,
+        "review"
+      )
+    ).toEqual(["PR does not reference issue #42"]);
   });
 });

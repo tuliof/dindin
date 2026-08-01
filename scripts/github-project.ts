@@ -152,6 +152,17 @@ export function parsePullRequestReference(value: string): string {
   return match?.[1] ?? fail(`Invalid pull request reference: ${value}`);
 }
 
+export function parseIssueNumber(value: string): number {
+  if (!NUMBER_PATTERN.test(value)) {
+    fail("--issue must contain only decimal digits");
+  }
+  const issue = Number(value);
+  if (!Number.isSafeInteger(issue) || issue < 1) {
+    fail("--issue must be a positive decimal issue number");
+  }
+  return issue;
+}
+
 function jsonRecords(value: unknown): JsonRecord[] {
   return Array.isArray(value)
     ? value.filter(
@@ -200,10 +211,14 @@ export function aggregateChecks(value: unknown): CheckAggregate {
 
 export function mergePreconditionFailures(
   data: JsonRecord,
+  issue: number,
   taskStatus: string
 ): string[] {
   const failures: string[] = [];
   const checks = aggregateChecks(data.statusCheckRollup);
+  const referencesIssue = jsonRecords(data.closingIssuesReferences).some(
+    (reference) => reference.number === issue
+  );
   if (data.state !== "OPEN") {
     failures.push("PR is not open");
   }
@@ -231,6 +246,9 @@ export function mergePreconditionFailures(
   }
   if (taskStatus !== "review") {
     failures.push(`Linked project task is not in review: ${taskStatus}`);
+  }
+  if (!referencesIssue) {
+    failures.push(`PR does not reference issue #${issue}`);
   }
   return failures;
 }
@@ -551,7 +569,7 @@ function pullRequestData(pullRequest: string): Promise<JsonRecord> {
     "--repo",
     repository,
     "--json",
-    "number,url,state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefOid,reviewDecision,commits,statusCheckRollup,mergedAt",
+    "number,url,state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefOid,reviewDecision,commits,statusCheckRollup,mergedAt,closingIssuesReferences",
   ]);
 }
 
@@ -607,10 +625,7 @@ async function prChecks(options: Map<string, string>): Promise<void> {
 }
 
 async function mergePullRequest(options: Map<string, string>): Promise<void> {
-  const issue = Number(requiredOption(options, "issue"));
-  if (!Number.isInteger(issue) || issue < 1) {
-    fail("--issue must be a positive issue number");
-  }
+  const issue = parseIssueNumber(requiredOption(options, "issue"));
   const pullRequest = requiredOption(options, "pr");
   const method = requiredOption(options, "method");
   if (!MERGE_METHODS.includes(method as MergeMethod)) {
@@ -628,7 +643,7 @@ async function mergePullRequest(options: Map<string, string>): Promise<void> {
   ]);
   const item = findItem(items, issue);
   const taskStatus = normalizeOption(String(item.status ?? "missing"));
-  const failures = mergePreconditionFailures(data, taskStatus);
+  const failures = mergePreconditionFailures(data, issue, taskStatus);
   if (failures.length > 0) {
     fail(`Merge preconditions failed: ${failures.join("; ")}`);
   }
@@ -940,10 +955,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const issue = Number(options.get("issue"));
-  if (!Number.isInteger(issue) || issue < 1) {
+  const rawIssue = options.get("issue");
+  if (!rawIssue) {
     fail("This command requires --issue <number>");
   }
+  const issue = parseIssueNumber(rawIssue);
   if (await runIssueCommand(command, issue, options)) {
     return;
   }
