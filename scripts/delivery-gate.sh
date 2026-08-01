@@ -23,7 +23,7 @@ case "$MODE" in
     bun run check-types
     bun run test
     bun run build
-    bun run check
+    bun run lint:baseline
     ;;
   *)
     printf 'Usage: %s {affected|full}\n' "$0" >&2

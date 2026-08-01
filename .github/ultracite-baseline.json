@@ -1,0 +1,56 @@
+{
+  "diagnostics": [
+    [
+      "apps/web/server/plugins/evlog-auth.ts",
+      "lint/correctness/noUndeclaredVariables"
+    ],
+    [
+      "apps/web/src/components/sign-in-form.tsx",
+      "lint/performance/noJsxPropsBind"
+    ],
+    [
+      "apps/web/src/components/sign-up-form.tsx",
+      "lint/performance/noJsxPropsBind"
+    ],
+    [
+      "apps/web/src/components/user-menu.tsx",
+      "lint/performance/noJsxPropsBind"
+    ],
+    ["apps/web/src/routes/_auth/route.tsx", "lint/suspicious/useAwait"],
+    ["apps/web/src/routes/ai.tsx", "lint/performance/noJsxPropsBind"],
+    ["apps/web/src/routes/ai.tsx", "lint/suspicious/noArrayIndexKey"],
+    ["apps/web/src/routes/api/ai/$.ts", "lint/correctness/useHookAtTopLevel"],
+    ["apps/web/src/routes/index.tsx", "lint/style/noNestedTernary"],
+    ["apps/web/src/routes/login.tsx", "lint/performance/noJsxPropsBind"],
+    [
+      "apps/web/src/utils/orpc.ts",
+      "lint/suspicious/noParametersOnlyUsedInRecursion"
+    ],
+    ["packages/api/src/index.ts", "lint/suspicious/useAwait"],
+    ["packages/auth/src/index.ts", "lint/performance/noNamespaceImport"],
+    ["packages/db/src/index.ts", "lint/performance/noNamespaceImport"],
+    ["packages/db/src/schema/index.ts", "lint/performance/noBarrelFile"],
+    ["packages/env/src/web.ts", "lint/suspicious/noExplicitAny"],
+    [
+      "packages/ui/src/components/input-group.tsx",
+      "lint/a11y/noNoninteractiveElementInteractions"
+    ],
+    [
+      "packages/ui/src/components/input-group.tsx",
+      "lint/a11y/useKeyWithClickEvents"
+    ],
+    [
+      "packages/ui/src/components/input-group.tsx",
+      "lint/a11y/useSemanticElements"
+    ],
+    [
+      "packages/ui/src/components/input-group.tsx",
+      "lint/performance/noJsxPropsBind"
+    ],
+    ["packages/ui/src/components/label.tsx", "lint/a11y/noLabelWithoutControl"],
+    [
+      "packages/ui/src/components/message-scroller.tsx",
+      "lint/style/noExportedImports"
+    ]
+  ]
+}

@@ -50,6 +50,7 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "check": "ultracite check",
+    "lint:baseline": "bun scripts/lint-baseline.ts",
     "fix": "ultracite fix",
     "prepare": "husky"
   },
