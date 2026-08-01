@@ -5,6 +5,7 @@ import {
   parseIssueNumber,
   parsePullRequestReference,
   prStatusReport,
+  rejectMergeMethodOption,
 } from "./github-project";
 
 describe("GitHub project PR helpers", () => {
@@ -22,6 +23,15 @@ describe("GitHub project PR helpers", () => {
     for (const value of ["1e3", "0x10", " 10", "10 ", "+10", "0"]) {
       expect(() => parseIssueNumber(value)).toThrow("--issue");
     }
+  });
+
+  test("merge and auto-merge reject a supplied method option", () => {
+    expect(() =>
+      rejectMergeMethodOption(new Map([["method", "merge"]]), "merge")
+    ).toThrow("merge does not accept --method");
+    expect(() =>
+      rejectMergeMethodOption(new Map([["method", "rebase"]]), "auto-merge")
+    ).toThrow("auto-merge does not accept --method");
   });
 
   test("aggregates completed, pending, and failed checks deterministically", () => {

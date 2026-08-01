@@ -47,7 +47,6 @@ const OWNER_PATTERN = /^## Owner\n([^\n]+)/m;
 const ISSUE_URL_PATTERN = /\/issues\/(\d+)$/;
 const PULL_REQUEST_URL_PATTERN = /\/pull\/(\d+)(?:[/?#].*)?$/;
 const NUMBER_PATTERN = /^\d+$/;
-const MERGE_METHODS = ["squash", "merge", "rebase"] as const;
 const FAILED_CHECK_CONCLUSIONS = [
   "FAILURE",
   "ERROR",
@@ -56,8 +55,6 @@ const FAILED_CHECK_CONCLUSIONS = [
   "ACTION_REQUIRED",
   "STARTUP_FAILURE",
 ];
-
-export type MergeMethod = (typeof MERGE_METHODS)[number];
 
 export interface CheckReport {
   conclusion: string | null;
@@ -70,6 +67,15 @@ export interface CheckAggregate {
   failed: CheckReport[];
   pending: CheckReport[];
   state: "pass" | "pending" | "failure";
+}
+
+export function rejectMergeMethodOption(
+  options: Map<string, string>,
+  command: "merge" | "auto-merge"
+): void {
+  if (options.has("method")) {
+    fail(`${command} does not accept --method; squash is always used`);
+  }
 }
 
 function fail(message: string): never {
@@ -624,13 +630,89 @@ async function prChecks(options: Map<string, string>): Promise<void> {
   });
 }
 
+async function createPullRequest(options: Map<string, string>): Promise<void> {
+  const title = requiredOption(options, "title");
+  const body = requiredOption(options, "body");
+  const base = options.get("base") ?? "main";
+  const args = [
+    "pr",
+    "create",
+    "--repo",
+    repository,
+    "--base",
+    base,
+    "--title",
+    title,
+    "--body",
+    body,
+  ];
+  const head = options.get("head");
+  if (head) {
+    args.push("--head", head);
+  }
+  const url = await runGh(args);
+  print({ base, title, url });
+}
+
+function autoMergePreconditionFailures(data: JsonRecord): string[] {
+  const failures: string[] = [];
+  const checks = aggregateChecks(data.statusCheckRollup);
+  if (data.state !== "OPEN") {
+    failures.push("PR is not open");
+  }
+  if (data.isDraft === true) {
+    failures.push("PR is a draft");
+  }
+  if (jsonRecords(data.commits).length === 0) {
+    failures.push("PR has no commits");
+  }
+  if (checks.failed.length > 0) {
+    failures.push("PR has failed checks");
+  }
+  if (data.mergeable !== "MERGEABLE") {
+    failures.push(
+      `PR is not mergeable: ${String(data.mergeable ?? "unknown")}`
+    );
+  }
+  if (data.mergeStateStatus !== "CLEAN") {
+    failures.push(
+      `PR merge state is not clean: ${String(data.mergeStateStatus ?? "unknown")}`
+    );
+  }
+  return failures;
+}
+
+async function enableAutoMerge(options: Map<string, string>): Promise<void> {
+  const pullRequest = requiredOption(options, "pr");
+  rejectMergeMethodOption(options, "auto-merge");
+  if (options.get("review-verdict") !== "approve") {
+    fail(
+      "Auto-merge requires the explicit local Hunk verdict --review-verdict approve"
+    );
+  }
+
+  const data = await pullRequestData(pullRequest);
+  const failures = autoMergePreconditionFailures(data);
+  if (failures.length > 0) {
+    fail(`Auto-merge preconditions failed: ${failures.join("; ")}`);
+  }
+
+  const result = await runGh([
+    "pr",
+    "merge",
+    parsePullRequestReference(pullRequest),
+    "--repo",
+    repository,
+    "--auto",
+    "--squash",
+  ]);
+  print({ method: "squash", pullRequest, result });
+}
+
 async function mergePullRequest(options: Map<string, string>): Promise<void> {
   const issue = parseIssueNumber(requiredOption(options, "issue"));
   const pullRequest = requiredOption(options, "pr");
-  const method = requiredOption(options, "method");
-  if (!MERGE_METHODS.includes(method as MergeMethod)) {
-    fail("--method must be squash, merge, or rebase");
-  }
+  rejectMergeMethodOption(options, "merge");
   if (options.get("review-verdict") !== "approve") {
     fail(
       "Merge requires the explicit local Hunk verdict --review-verdict approve"
@@ -654,11 +736,11 @@ async function mergePullRequest(options: Map<string, string>): Promise<void> {
     parsePullRequestReference(pullRequest),
     "--repo",
     repository,
-    `--${method}`,
+    "--squash",
   ]);
   print({
     issue,
-    mergeMethod: method,
+    mergeMethod: "squash",
     mergeResult: mergeOutput,
     postMerge: await deliveryReport(pullRequest),
   });
@@ -827,6 +909,14 @@ async function runSimpleCommand(
   }
   if (command === "pr-checks") {
     await prChecks(options);
+    return true;
+  }
+  if (command === "pr-create") {
+    await createPullRequest(options);
+    return true;
+  }
+  if (command === "auto-merge") {
+    await enableAutoMerge(options);
     return true;
   }
   if (command === "merge") {
