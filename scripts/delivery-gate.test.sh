@@ -38,6 +38,18 @@ case "$BYPASS_OUTPUT" in
     ;;
 esac
 
+set +e
+TRAILER_ONLY_OUTPUT=$(
+  cd "$TEST_DIR"
+  bash "$ROOT_DIR/scripts/delivery-gate.sh" full 2>&1
+)
+TRAILER_ONLY_STATUS=$?
+set -e
+if [[ "$TRAILER_ONLY_STATUS" -eq 0 ]] || [[ "$TRAILER_ONLY_OUTPUT" == *"Delivery gate bypassed:"* ]]; then
+  printf 'Expected a trailer-only bypass to fail without skipping validation.\n' >&2
+  exit 1
+fi
+
 git -C "$TEST_DIR" commit --allow-empty -qm "test: remove delivery gate exception"
 if (
   cd "$TEST_DIR"

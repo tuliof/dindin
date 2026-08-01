@@ -13,6 +13,11 @@ while IFS= read -r trailer; do
   esac
 done < <(printf '%s\n' "$COMMIT_MESSAGE" | git interpret-trailers --parse)
 
+if [[ -n "$BYPASS_TRAILER" && -z "${DELIVERY_GATE_BYPASS_REASON:-}" ]]; then
+  printf 'A Delivery-Gate-Bypass-Reason commit trailer requires DELIVERY_GATE_BYPASS_REASON.\n' >&2
+  exit 1
+fi
+
 if [[ -n "${DELIVERY_GATE_BYPASS_REASON:-}" ]]; then
   if [[ -z "$BYPASS_TRAILER" ]]; then
     printf 'A bypass reason requires a Delivery-Gate-Bypass-Reason commit trailer.\n' >&2
@@ -24,7 +29,7 @@ if [[ -n "${DELIVERY_GATE_BYPASS_REASON:-}" ]]; then
   fi
 fi
 
-BYPASS_REASON="$BYPASS_TRAILER"
+BYPASS_REASON="${DELIVERY_GATE_BYPASS_REASON:-}"
 
 if [[ -n "$BYPASS_REASON" ]]; then
   MESSAGE="Delivery gate bypassed: $BYPASS_REASON"
