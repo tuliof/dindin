@@ -1,5 +1,14 @@
 {
   "mcpServers": {
+    "chrome-devtools-mcp": {
+      "command": "bunx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"]
+    },
+    "exa": {
+      "enabled": true,
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
+    },
     "better-t-stack": {
       "command": "bunx",
       "args": ["create-better-t-stack@latest", "mcp"]

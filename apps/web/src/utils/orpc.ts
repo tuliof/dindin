@@ -2,8 +2,8 @@ import { createContext } from "@dindin/api/context";
 import { appRouter } from "@dindin/api/routers/index";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { createRouterClient } from "@orpc/server";
 import type { RouterClient } from "@orpc/server";
+import { createRouterClient } from "@orpc/server";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { createIsomorphicFn } from "@tanstack/react-start";
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 export function createQueryClient() {
   return new QueryClient({
+    defaultOptions: { queries: { staleTime: 60 * 1000 } },
     queryCache: new QueryCache({
       onError: (error, query) => {
         toast.error(`Error: ${error.message}`, {
@@ -24,27 +25,24 @@ export function createQueryClient() {
         });
       },
     }),
-    defaultOptions: { queries: { staleTime: 60 * 1000 } },
   });
 }
 
 const getORPCClient = createIsomorphicFn()
   .server(() =>
     createRouterClient(appRouter, {
-      context: async () => {
-        return createContext({ req: getRequest() });
-      },
-    }),
+      context: async () => createContext({ req: getRequest() }),
+    })
   )
   .client((): RouterClient<typeof appRouter> => {
     const link = new RPCLink({
-      url: `${window.location.origin}/api/rpc`,
       fetch(url, options) {
         return fetch(url, {
           ...options,
           credentials: "include",
         });
       },
+      url: `${window.location.origin}/api/rpc`,
     });
 
     return createORPCClient(link);

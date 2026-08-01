@@ -16,30 +16,34 @@ const rpcHandler = new RPCHandler(appRouter, {
 });
 
 const apiHandler = new OpenAPIHandler(appRouter, {
-  plugins: [
-    new OpenAPIReferencePlugin({
-      schemaConverters: [new ZodToJsonSchemaConverter()],
-    }),
-  ],
   interceptors: [
     onError((error) => {
       console.error(error);
+    }),
+  ],
+  plugins: [
+    new OpenAPIReferencePlugin({
+      schemaConverters: [new ZodToJsonSchemaConverter()],
     }),
   ],
 });
 
 async function handle({ request }: { request: Request }) {
   const rpcResult = await rpcHandler.handle(request, {
-    prefix: "/api/rpc",
     context: await createContext({ req: request }),
+    prefix: "/api/rpc",
   });
-  if (rpcResult.response) return rpcResult.response;
+  if (rpcResult.response) {
+    return rpcResult.response;
+  }
 
   const apiResult = await apiHandler.handle(request, {
-    prefix: "/api/rpc/api-reference",
     context: await createContext({ req: request }),
+    prefix: "/api/rpc/api-reference",
   });
-  if (apiResult.response) return apiResult.response;
+  if (apiResult.response) {
+    return apiResult.response;
+  }
 
   return new Response("Not found", { status: 404 });
 }
@@ -47,12 +51,12 @@ async function handle({ request }: { request: Request }) {
 export const Route = createFileRoute("/api/rpc/$")({
   server: {
     handlers: {
-      HEAD: handle,
+      DELETE: handle,
       GET: handle,
+      HEAD: handle,
+      PATCH: handle,
       POST: handle,
       PUT: handle,
-      PATCH: handle,
-      DELETE: handle,
     },
   },
 });

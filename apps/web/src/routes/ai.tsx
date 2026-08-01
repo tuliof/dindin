@@ -27,11 +27,20 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@dindin/ui/components/message-scroller";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@dindin/ui/components/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@dindin/ui/components/tooltip";
 import { createFileRoute } from "@tanstack/react-router";
 import { DefaultChatTransport } from "ai";
-import { ArrowUpIcon, Loader2, MessageCircleDashedIcon, RotateCwIcon } from "lucide-react";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  ArrowUpIcon,
+  Loader2,
+  MessageCircleDashedIcon,
+  RotateCwIcon,
+} from "lucide-react";
+import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { Streamdown } from "streamdown";
 
 export const Route = createFileRoute("/ai")({
@@ -50,7 +59,9 @@ function RouteComponent() {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const text = input.trim();
-    if (!text || isSending) return;
+    if (!text || isSending) {
+      return;
+    }
     sendMessage({ text });
     setInput("");
   };
@@ -73,20 +84,22 @@ function RouteComponent() {
         <header className="shrink-0 border-b px-4 py-3">
           <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-sm font-medium">New Chat</h1>
-              <p className="text-xs/relaxed text-muted-foreground">How can I help you today?</p>
+              <h1 className="font-medium text-sm">New Chat</h1>
+              <p className="text-muted-foreground text-xs/relaxed">
+                How can I help you today?
+              </p>
             </div>
             <div className="shrink-0">
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
+                      aria-label="Reset conversation"
+                      disabled={isSending}
+                      onClick={resetConversation}
+                      size="icon-sm"
                       type="button"
                       variant="outline"
-                      size="icon-sm"
-                      aria-label="Reset conversation"
-                      onClick={resetConversation}
-                      disabled={isSending}
                     />
                   }
                 >
@@ -105,7 +118,9 @@ function RouteComponent() {
                   <MessageCircleDashedIcon />
                 </EmptyMedia>
                 <EmptyTitle>Morning, dindin!</EmptyTitle>
-                <EmptyDescription>What are we working on today?</EmptyDescription>
+                <EmptyDescription>
+                  What are we working on today?
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -119,10 +134,15 @@ function RouteComponent() {
                     const isUser = message.role === "user";
 
                     return (
-                      <MessageScrollerItem key={message.id} scrollAnchor={isUser}>
+                      <MessageScrollerItem
+                        key={message.id}
+                        scrollAnchor={isUser}
+                      >
                         <Message align={isUser ? "end" : "start"}>
                           <MessageBody>
-                            <MessageHeader>{isUser ? "You" : "AI Assistant"}</MessageHeader>
+                            <MessageHeader>
+                              {isUser ? "You" : "AI Assistant"}
+                            </MessageHeader>
                             <Bubble
                               align={isUser ? "end" : "start"}
                               variant={isUser ? "default" : "secondary"}
@@ -132,10 +152,11 @@ function RouteComponent() {
                                   if (part.type === "text") {
                                     return (
                                       <Streamdown
-                                        key={index}
                                         isAnimating={
-                                          status === "streaming" && message.role === "assistant"
+                                          status === "streaming" &&
+                                          message.role === "assistant"
                                         }
+                                        key={index}
                                       >
                                         {part.text}
                                       </Streamdown>
@@ -173,29 +194,33 @@ function RouteComponent() {
         </main>
         <footer className="shrink-0 border-t px-4 py-3">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-            <form onSubmit={handleSubmit} className="w-full">
+            <form className="w-full" onSubmit={handleSubmit}>
               <InputGroup>
                 <InputGroupTextarea
+                  autoComplete="off"
+                  autoFocus
+                  className="max-h-32 min-h-14"
+                  disabled={isSending}
                   name="prompt"
-                  value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handlePromptKeyDown}
                   placeholder="Type your message..."
-                  className="max-h-32 min-h-14"
                   rows={1}
-                  autoComplete="off"
-                  autoFocus
-                  disabled={isSending}
+                  value={input}
                 />
                 <InputGroupAddon align="block-end" className="pt-1">
                   <InputGroupButton
+                    className="ml-auto"
+                    disabled={isSending || !input.trim()}
+                    size="icon-sm"
                     type="submit"
                     variant="default"
-                    size="icon-sm"
-                    disabled={isSending || !input.trim()}
-                    className="ml-auto"
                   >
-                    {isSending ? <Loader2 className="animate-spin" /> : <ArrowUpIcon />}
+                    {isSending ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <ArrowUpIcon />
+                    )}
                     <span className="sr-only">Send</span>
                   </InputGroupButton>
                 </InputGroupAddon>

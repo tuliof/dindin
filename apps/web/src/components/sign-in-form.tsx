@@ -10,7 +10,11 @@ import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
+export default function SignInForm({
+  onSwitchToSignUp,
+}: {
+  onSwitchToSignUp: () => void;
+}) {
   const navigate = useNavigate({
     from: "/",
   });
@@ -28,16 +32,16 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
           password: value.password,
         },
         {
+          onError: (error) => {
+            toast.error(error.error.message || error.error.statusText);
+          },
           onSuccess: () => {
             navigate({
               to: "/dashboard",
             });
             toast.success("Sign in successful");
           },
-          onError: (error) => {
-            toast.error(error.error.message || error.error.statusText);
-          },
-        },
+        }
       );
     },
     validators: {
@@ -53,16 +57,16 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
   }
 
   return (
-    <div className="mx-auto w-full mt-10 max-w-md p-6">
-      <h1 className="mb-6 text-center text-3xl font-bold">Welcome Back</h1>
+    <div className="mx-auto mt-10 w-full max-w-md p-6">
+      <h1 className="mb-6 text-center font-bold text-3xl">Welcome Back</h1>
 
       <form
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
           form.handleSubmit();
         }}
-        className="space-y-4"
       >
         <div>
           <form.Field name="email">
@@ -72,13 +76,13 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
                 <Input
                   id={field.name}
                   name={field.name}
-                  type="email"
-                  value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
+                  type="email"
+                  value={field.state.value}
                 />
                 {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-red-500">
+                  <p className="text-red-500" key={error?.message}>
                     {error?.message}
                   </p>
                 ))}
@@ -95,13 +99,13 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
                 <Input
                   id={field.name}
                   name={field.name}
-                  type="password"
-                  value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
+                  type="password"
+                  value={field.state.value}
                 />
                 {field.state.meta.errors.map((error) => (
-                  <p key={error?.message} className="text-red-500">
+                  <p className="text-red-500" key={error?.message}>
                     {error?.message}
                   </p>
                 ))}
@@ -111,10 +115,17 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
         </div>
 
         <form.Subscribe
-          selector={(state) => ({ canSubmit: state.canSubmit, isSubmitting: state.isSubmitting })}
+          selector={(state) => ({
+            canSubmit: state.canSubmit,
+            isSubmitting: state.isSubmitting,
+          })}
         >
           {({ canSubmit, isSubmitting }) => (
-            <Button type="submit" className="w-full" disabled={!canSubmit || isSubmitting}>
+            <Button
+              className="w-full"
+              disabled={!canSubmit || isSubmitting}
+              type="submit"
+            >
               {isSubmitting ? "Submitting..." : "Sign In"}
             </Button>
           )}
@@ -123,9 +134,9 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
 
       <div className="mt-4 text-center">
         <Button
-          variant="link"
-          onClick={onSwitchToSignUp}
           className="text-indigo-600 hover:text-indigo-800"
+          onClick={onSwitchToSignUp}
+          variant="link"
         >
           Need an account? Sign Up
         </Button>
