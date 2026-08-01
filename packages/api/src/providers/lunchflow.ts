@@ -6,6 +6,31 @@ const TRAILING_SLASH_PATTERN = /\/$/;
 
 export type RuntimeConfig = Record<string, string | undefined>;
 
+export type PhysicalAccountOwner = "partner_a" | "partner_b" | "joint";
+
+export interface LunchflowAccountRecord {
+  account_class?: string | null;
+  account_type?: string | null;
+  class?: string | null;
+  currency?: string | null;
+  id: string | number;
+  institution_name?: string | null;
+  name?: string | null;
+  owner?: string | null;
+  ownership?: string | null;
+  type?: string | null;
+}
+
+export interface PhysicalAccountMetadata {
+  accountClass: string | null;
+  accountType: string | null;
+  currency: string | null;
+  displayName: string | null;
+  institution: string | null;
+  owner: PhysicalAccountOwner | null;
+  providerAccountId: string;
+}
+
 export interface LunchflowClientOptions {
   apiKey: string;
   baseUrl?: string;
@@ -70,8 +95,16 @@ export class LunchflowClient implements ProviderAdapter {
     this.#fetch = options.fetch ?? globalThis.fetch;
   }
 
-  listAccounts(): Promise<unknown> {
-    return this.#request("/accounts");
+  async listAccounts(): Promise<PhysicalAccountMetadata[]> {
+    const response = await this.#request("/accounts");
+
+    if (!isAccountListResponse(response)) {
+      throw new LunchflowConfigurationError(
+        "Lunchflow /accounts response must contain an accounts array."
+      );
+    }
+
+    return response.accounts.map(normalizeLunchflowAccount);
   }
 
   getAccountBalance(accountId: string): Promise<unknown> {
@@ -102,6 +135,65 @@ export class LunchflowClient implements ProviderAdapter {
 
     return response.json();
   }
+}
+
+export function normalizeLunchflowAccount(
+  account: LunchflowAccountRecord
+): PhysicalAccountMetadata {
+  return {
+    accountClass: normalizeEnumText(account.account_class ?? account.class),
+    accountType: normalizeEnumText(account.account_type ?? account.type),
+    currency: normalizeText(account.currency)?.toUpperCase() ?? null,
+    displayName: normalizeText(account.name),
+    institution: normalizeText(account.institution_name),
+    owner: normalizeOwner(account.ownership ?? account.owner),
+    providerAccountId: String(account.id),
+  };
+}
+
+function isAccountListResponse(
+  value: unknown
+): value is { accounts: LunchflowAccountRecord[] } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { accounts?: unknown }).accounts)
+  );
+}
+
+function normalizeText(
+  value: string | number | null | undefined
+): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
+function normalizeEnumText(value: string | null | undefined): string | null {
+  return (
+    normalizeText(value)
+      ?.toLowerCase()
+      .replace(/[\s-]+/g, "_") ?? null
+  );
+}
+
+function normalizeOwner(
+  value: string | null | undefined
+): PhysicalAccountOwner | null {
+  const normalized = normalizeEnumText(value);
+
+  if (
+    normalized === "partner_a" ||
+    normalized === "partner_b" ||
+    normalized === "joint"
+  ) {
+    return normalized;
+  }
+
+  return null;
 }
 
 export function createLunchflowClientFromRuntimeConfig(
