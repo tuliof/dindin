@@ -40,7 +40,13 @@ import {
   MessageCircleDashedIcon,
   RotateCwIcon,
 } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  useCallback,
+  useState,
+} from "react";
 import { Streamdown } from "streamdown";
 
 export const Route = createFileRoute("/ai")({
@@ -56,27 +62,37 @@ function RouteComponent() {
   });
   const isSending = status === "submitted" || status === "streaming";
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || isSending) {
-      return;
-    }
-    sendMessage({ text });
-    setInput("");
-  };
-
-  const handlePromptKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handleSubmit = useCallback(
+    (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      e.currentTarget.form?.requestSubmit();
-    }
-  };
+      const text = input.trim();
+      if (!text || isSending) {
+        return;
+      }
+      sendMessage({ text });
+      setInput("");
+    },
+    [input, isSending, sendMessage]
+  );
 
-  const resetConversation = () => {
+  const handlePromptKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        e.currentTarget.form?.requestSubmit();
+      }
+    },
+    []
+  );
+
+  const resetConversation = useCallback(() => {
     setInput("");
     setMessages([]);
-  };
+  }, [setMessages]);
+  const handleInputChange = useCallback(
+    (event: ChangeEvent<HTMLTextAreaElement>) => setInput(event.target.value),
+    []
+  );
 
   return (
     <MessageScrollerProvider>
@@ -148,7 +164,7 @@ function RouteComponent() {
                               variant={isUser ? "default" : "secondary"}
                             >
                               <BubbleContent>
-                                {message.parts?.map((part, index) => {
+                                {message.parts?.map((part) => {
                                   if (part.type === "text") {
                                     return (
                                       <Streamdown
@@ -156,7 +172,7 @@ function RouteComponent() {
                                           status === "streaming" &&
                                           message.role === "assistant"
                                         }
-                                        key={index}
+                                        key={`${message.id}-${part.text}`}
                                       >
                                         {part.text}
                                       </Streamdown>
@@ -201,14 +217,19 @@ function RouteComponent() {
                   autoFocus
                   className="max-h-32 min-h-14"
                   disabled={isSending}
+                  id="prompt"
                   name="prompt"
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyDown={handlePromptKeyDown}
                   placeholder="Type your message..."
                   rows={1}
                   value={input}
                 />
-                <InputGroupAddon align="block-end" className="pt-1">
+                <InputGroupAddon
+                  align="block-end"
+                  className="pt-1"
+                  htmlFor="prompt"
+                >
                   <InputGroupButton
                     className="ml-auto"
                     disabled={isSending || !input.trim()}

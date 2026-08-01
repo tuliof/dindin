@@ -7,9 +7,9 @@ import { cn } from "@dindin/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
-function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+function InputGroup({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
-    <div
+    <fieldset
       className={cn(
         "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-none border border-input bg-background shadow-xs outline-none transition-[color,box-shadow] has-[>textarea]:h-auto dark:bg-input/30",
         "has-[>[data-align=inline-end]]:[&>input]:pr-2 has-[>[data-align=inline-start]]:[&>input]:pl-2",
@@ -20,7 +20,6 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
         className
       )}
       data-slot="input-group"
-      role="group"
       {...props}
     />
   );
@@ -50,24 +49,18 @@ const inputGroupAddonVariants = cva(
 function InputGroupAddon({
   className,
   align = "inline-start",
+  htmlFor,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
+}: Omit<React.ComponentProps<"label">, "htmlFor"> &
+  VariantProps<typeof inputGroupAddonVariants> & { htmlFor: string }) {
   return (
-    <div
+    // The wrapper requires and forwards the control association to each caller.
+    // biome-ignore lint/a11y/noLabelWithoutControl: htmlFor is required by this wrapper
+    <label
       className={cn(inputGroupAddonVariants({ align }), className)}
       data-align={align}
       data-slot="input-group-addon"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("button")) {
-          return;
-        }
-        e.currentTarget.parentElement
-          ?.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-            "input, textarea"
-          )
-          ?.focus();
-      }}
-      role="group"
+      htmlFor={htmlFor}
       {...props}
     />
   );

@@ -36,8 +36,8 @@ const getORPCClient = createIsomorphicFn()
   )
   .client((): RouterClient<typeof appRouter> => {
     const link = new RPCLink({
-      fetch(url, options) {
-        return fetch(url, {
+      fetch(_url, options) {
+        return fetch(_url, {
           ...options,
           credentials: "include",
         });

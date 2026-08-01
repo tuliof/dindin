@@ -3,12 +3,27 @@ import { Input } from "@dindin/ui/components/input";
 import { Label } from "@dindin/ui/components/label";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
+import { type ChangeEvent, type FormEvent, useCallback } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
 import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
+
+function FormFieldInput({
+  onChange,
+  ...props
+}: Omit<React.ComponentProps<typeof Input>, "onChange"> & {
+  onChange: (value: string) => void;
+}) {
+  const handleChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value),
+    [onChange]
+  );
+
+  return <Input onChange={handleChange} {...props} />;
+}
 
 export default function SignInForm({
   onSwitchToSignUp,
@@ -51,6 +66,14 @@ export default function SignInForm({
       }),
     },
   });
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      form.handleSubmit();
+    },
+    [form]
+  );
 
   if (isPending) {
     return <Loader />;
@@ -60,24 +83,17 @@ export default function SignInForm({
     <div className="mx-auto mt-10 w-full max-w-md p-6">
       <h1 className="mb-6 text-center font-bold text-3xl">Welcome Back</h1>
 
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          form.handleSubmit();
-        }}
-      >
+      <form className="space-y-4" onSubmit={handleSubmit}>
         <div>
           <form.Field name="email">
             {(field) => (
               <div className="space-y-2">
                 <Label htmlFor={field.name}>Email</Label>
-                <Input
+                <FormFieldInput
                   id={field.name}
                   name={field.name}
                   onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
+                  onChange={field.handleChange}
                   type="email"
                   value={field.state.value}
                 />
@@ -96,11 +112,11 @@ export default function SignInForm({
             {(field) => (
               <div className="space-y-2">
                 <Label htmlFor={field.name}>Password</Label>
-                <Input
+                <FormFieldInput
                   id={field.name}
                   name={field.name}
                   onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
+                  onChange={field.handleChange}
                   type="password"
                   value={field.state.value}
                 />
@@ -114,12 +130,7 @@ export default function SignInForm({
           </form.Field>
         </div>
 
-        <form.Subscribe
-          selector={(state) => ({
-            canSubmit: state.canSubmit,
-            isSubmitting: state.isSubmitting,
-          })}
-        >
+        <form.Subscribe>
           {({ canSubmit, isSubmitting }) => (
             <Button
               className="w-full"

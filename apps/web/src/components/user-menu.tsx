@@ -10,12 +10,22 @@ import {
 } from "@dindin/ui/components/dropdown-menu";
 import { Skeleton } from "@dindin/ui/components/skeleton";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useCallback } from "react";
 
 import { authClient } from "@/lib/auth-client";
 
 export default function UserMenu() {
   const navigate = useNavigate();
   const { data: session, isPending } = authClient.useSession();
+  const handleSignOut = useCallback(() => {
+    authClient.signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          navigate({ to: "/" });
+        },
+      },
+    });
+  }, [navigate]);
 
   if (isPending) {
     return <Skeleton className="h-9 w-24" />;
@@ -39,20 +49,7 @@ export default function UserMenu() {
           <DropdownMenuLabel>My Account</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem>{session.user.email}</DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              authClient.signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    navigate({
-                      to: "/",
-                    });
-                  },
-                },
-              });
-            }}
-            variant="destructive"
-          >
+          <DropdownMenuItem onClick={handleSignOut} variant="destructive">
             Sign Out
           </DropdownMenuItem>
         </DropdownMenuGroup>
