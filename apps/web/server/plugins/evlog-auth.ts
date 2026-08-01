@@ -1,5 +1,8 @@
 import { auth } from "@dindin/auth";
-import { createAuthIdentifier, type BetterAuthInstance } from "evlog/better-auth";
+import {
+  type BetterAuthInstance,
+  createAuthIdentifier,
+} from "evlog/better-auth";
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook(
@@ -7,6 +10,6 @@ export default defineNitroPlugin((nitroApp) => {
     createAuthIdentifier(auth as BetterAuthInstance, {
       exclude: ["/api/auth/**"],
       maskEmail: true,
-    }),
+    })
   );
 });

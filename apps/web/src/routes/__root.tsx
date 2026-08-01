@@ -1,7 +1,12 @@
 import { Toaster } from "@dindin/ui/components/sonner";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  HeadContent,
+  Outlet,
+  Scripts,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
@@ -17,37 +22,36 @@ export interface RouterAppContext {
 }
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
-  server: {
-    middleware: [createMiddleware().server(evlogErrorHandler)],
-  },
+  component: RootDocument,
 
   head: () => ({
+    links: [
+      {
+        href: appCss,
+        rel: "stylesheet",
+      },
+    ],
     meta: [
       {
         charSet: "utf-8",
       },
       {
-        name: "viewport",
         content: "width=device-width, initial-scale=1",
+        name: "viewport",
       },
       {
         title: "My App",
       },
     ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-    ],
   }),
-
-  component: RootDocument,
+  server: {
+    middleware: [createMiddleware().server(evlogErrorHandler)],
+  },
 });
 
 function RootDocument() {
   return (
-    <html lang="en" className="dark">
+    <html className="dark" lang="en">
       <head>
         <HeadContent />
       </head>
@@ -58,7 +62,7 @@ function RootDocument() {
         </div>
         <Toaster richColors />
         <TanStackRouterDevtools position="bottom-left" />
-        <ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />
+        <ReactQueryDevtools buttonPosition="bottom-right" position="bottom" />
         <Scripts />
       </body>
     </html>

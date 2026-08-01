@@ -2,11 +2,11 @@ import { devToolsMiddleware } from "@ai-sdk/devtools";
 import { google } from "@ai-sdk/google";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  convertToModelMessages,
   createUIMessageStreamResponse,
   streamText,
   toUIMessageStream,
   type UIMessage,
-  convertToModelMessages,
   wrapLanguageModel,
 } from "ai";
 import type { RequestLogger } from "evlog";
@@ -23,15 +23,15 @@ export const Route = createFileRoute("/api/ai/$")({
           const ai = createAILogger(useRequest().context.log as RequestLogger);
 
           const model = wrapLanguageModel({
-            model: google("gemini-2.5-flash"),
             middleware: devToolsMiddleware(),
+            model: google("gemini-2.5-flash"),
           });
           const result = streamText({
-            model: ai.wrap(model),
             messages: await convertToModelMessages(messages),
+            model: ai.wrap(model),
             telemetry: {
-              isEnabled: true,
               integrations: [createEvlogIntegration(ai)],
+              isEnabled: true,
             },
           });
 
@@ -40,10 +40,13 @@ export const Route = createFileRoute("/api/ai/$")({
           });
         } catch (error) {
           console.error("AI API error:", error);
-          return new Response(JSON.stringify({ error: "Failed to process AI request" }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
+          return new Response(
+            JSON.stringify({ error: "Failed to process AI request" }),
+            {
+              headers: { "Content-Type": "application/json" },
+              status: 500,
+            }
+          );
         }
       },
     },

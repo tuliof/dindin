@@ -9,18 +9,18 @@ export function createAuth() {
   const db = createDb();
 
   return betterAuth({
+    baseURL: env.BETTER_AUTH_URL,
     database: drizzleAdapter(db, {
       provider: "sqlite",
 
-      schema: schema,
+      schema,
     }),
-    trustedOrigins: [env.CORS_ORIGIN],
     emailAndPassword: {
       enabled: true,
     },
-    secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.BETTER_AUTH_URL,
     plugins: [tanstackStartCookies()],
+    secret: env.BETTER_AUTH_SECRET,
+    trustedOrigins: [env.CORS_ORIGIN],
   });
 }
 
