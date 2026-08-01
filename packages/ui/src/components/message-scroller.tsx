@@ -4,12 +4,31 @@ import { Button } from "@dindin/ui/components/button";
 import { cn } from "@dindin/ui/lib/utils";
 import {
   MessageScroller as MessageScrollerPrimitive,
-  useMessageScroller,
-  useMessageScrollerScrollable,
-  useMessageScrollerVisibility,
+  useMessageScroller as useMessageScrollerPrimitive,
+  useMessageScrollerScrollable as useMessageScrollerScrollablePrimitive,
+  useMessageScrollerVisibility as useMessageScrollerVisibilityPrimitive,
 } from "@shadcn/react/message-scroller";
+
 import { ArrowDownIcon } from "lucide-react";
 import type * as React from "react";
+
+function useMessageScroller(
+  ...args: Parameters<typeof useMessageScrollerPrimitive>
+) {
+  return useMessageScrollerPrimitive(...args);
+}
+
+function useMessageScrollerScrollable(
+  ...args: Parameters<typeof useMessageScrollerScrollablePrimitive>
+) {
+  return useMessageScrollerScrollablePrimitive(...args);
+}
+
+function useMessageScrollerVisibility(
+  ...args: Parameters<typeof useMessageScrollerVisibilityPrimitive>
+) {
+  return useMessageScrollerVisibilityPrimitive(...args);
+}
 
 function MessageScrollerProvider(
   props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>
