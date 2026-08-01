@@ -15,6 +15,13 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
+    PLAID_DEV_CLIENT_ID: z.string().min(1).optional(),
+    PLAID_DEV_SECRET: z.string().min(1).optional(),
+    PLAID_ENV: z.enum(["sandbox", "dev", "prod"]).default("sandbox"),
+    PLAID_PROD_CLIENT_ID: z.string().min(1).optional(),
+    PLAID_PROD_SECRET: z.string().min(1).optional(),
+    PLAID_SANDBOX_CLIENT_ID: z.string().min(1).optional(),
+    PLAID_SANDBOX_SECRET: z.string().min(1).optional(),
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,
 });
