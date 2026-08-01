@@ -11,7 +11,7 @@ import {
 } from "ai";
 import type { RequestLogger } from "evlog";
 import { createAILogger, createEvlogIntegration } from "evlog/ai";
-import { useRequest } from "nitro/context";
+import { useRequest as getRequest } from "nitro/context";
 
 export const Route = createFileRoute("/api/ai/$")({
   server: {
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/api/ai/$")({
         try {
           const { messages }: { messages: UIMessage[] } = await request.json();
 
-          const ai = createAILogger(useRequest().context.log as RequestLogger);
+          const ai = createAILogger(getRequest().context.log as RequestLogger);
 
           const model = wrapLanguageModel({
             middleware: devToolsMiddleware(),

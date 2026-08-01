@@ -3,6 +3,7 @@ import {
   type BetterAuthInstance,
   createAuthIdentifier,
 } from "evlog/better-auth";
+import { defineNitroPlugin } from "nitro";
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook(

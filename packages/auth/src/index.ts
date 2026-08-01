@@ -1,5 +1,13 @@
 import { createDb } from "@dindin/db";
-import * as schema from "@dindin/db/schema/auth";
+import {
+  account,
+  accountRelations,
+  session,
+  sessionRelations,
+  user,
+  userRelations,
+  verification,
+} from "@dindin/db/schema/auth";
 import { env } from "@dindin/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -13,7 +21,15 @@ export function createAuth() {
     database: drizzleAdapter(db, {
       provider: "sqlite",
 
-      schema,
+      schema: {
+        account,
+        accountRelations,
+        session,
+        sessionRelations,
+        user,
+        userRelations,
+        verification,
+      },
     }),
     emailAndPassword: {
       enabled: true,
