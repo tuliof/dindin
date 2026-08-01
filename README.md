@@ -93,6 +93,9 @@ For more details, see the guide on [Deploying with Docker Compose](https://www.b
 ## Git Hooks and Formatting
 
 - Initialize hooks: `bun run prepare`
+- Pre-push validation: `bun run validate:affected` runs deterministic affected-package type, test, and build checks against `origin/main`.
+- PR validation: `bun run validate:full` runs all applicable type, test, build, and Ultracite lint checks.
+- Gate bypasses require `DELIVERY_GATE_BYPASS_REASON` with a specific reason recorded in the PR or delivery handoff.
 
 ## Project Structure
 
