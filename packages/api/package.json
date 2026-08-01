@@ -21,6 +21,7 @@
     "@orpc/server": "catalog:",
     "@orpc/zod": "catalog:",
     "dotenv": "catalog:",
+    "plaid": "^45.0.0",
     "zod": "catalog:"
   },
   "devDependencies": {
