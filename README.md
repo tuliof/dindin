@@ -94,8 +94,8 @@ For more details, see the guide on [Deploying with Docker Compose](https://www.b
 
 - Initialize hooks: `bun run prepare`
 - Pre-push validation: `bun run validate:affected` runs deterministic affected-package type, test, and build checks against `origin/main`.
-- PR validation: `bun run validate:full` runs all applicable type, test, build, and Ultracite lint checks.
-- Gate bypasses require `DELIVERY_GATE_BYPASS_REASON` with a specific reason recorded in the PR or delivery handoff.
+- PR validation: `bun run validate:full` runs all applicable type, test, build, and repository-wide Ultracite lint checks. The lint gate allows only the explicit known baseline in `.github/ultracite-baseline.json`; any new diagnostic fails the gate. `bun run check` remains available for the unfiltered lint report.
+- Gate bypasses require both a durable `Delivery-Gate-Bypass-Reason: ...` commit trailer and a matching `DELIVERY_GATE_BYPASS_REASON`; either one alone fails and cannot skip validation. See `.github/BRANCH_PROTECTION.md` for the external maintainer action required to make `Full validation` a merge gate.
 
 ## Project Structure
 

@@ -34,6 +34,7 @@
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
+    "test:delivery-gate": "bash scripts/delivery-gate.test.sh",
     "validate:affected": "bash scripts/delivery-gate.sh affected",
     "validate:full": "bash scripts/delivery-gate.sh full",
     "dev:web": "turbo run dev -F web",
@@ -50,6 +51,7 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "check": "ultracite check",
+    "lint:baseline": "bun scripts/lint-baseline.ts",
     "fix": "ultracite fix",
     "prepare": "husky"
   },

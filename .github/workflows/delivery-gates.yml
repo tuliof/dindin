@@ -3,12 +3,6 @@ name: Delivery Gates
 on:
   pull_request:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      bypass_reason:
-        description: Auditable reason for bypassing the delivery gate
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -21,13 +15,11 @@ jobs:
   validate:
     name: Full validation
     runs-on: ubuntu-latest
-    env:
-      DELIVERY_GATE_BYPASS_REASON: ${{ inputs.bypass_reason || '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -35,7 +27,6 @@ jobs:
           bun-version: 1.3.14
 
       - name: Install dependencies
-        if: env.DELIVERY_GATE_BYPASS_REASON == ''
         run: bun install --frozen-lockfile
 
       - name: Run full delivery gate
