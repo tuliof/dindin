@@ -29,7 +29,14 @@ declare const Bun: {
 const DEFAULT_OWNER = "tuliof";
 const DEFAULT_PROJECT = "2";
 const DEFAULT_REPOSITORY = "tuliof/dindin";
-const STATUS_NAMES = ["todo", "in-progress", "review", "done"] as const;
+const STATUS_NAMES = [
+  "todo",
+  "in-progress",
+  "review",
+  "done",
+  "blocked",
+] as const;
+const STATUS_USAGE = STATUS_NAMES.join("|");
 
 type StatusName = (typeof STATUS_NAMES)[number];
 
@@ -188,6 +195,18 @@ function requiredOption(options: Map<string, string>, name: string): string {
   return value ?? fail(`Missing required option --${name}`);
 }
 
+function validateBlockedComment(body: string): void {
+  const requiredSections = ["Question", "Options", "Recommendation"];
+  const missingSections = requiredSections.filter(
+    (section) => !new RegExp(`^## ${section}[ \\t]*$`, "im").test(body)
+  );
+  if (missingSections.length > 0) {
+    fail(
+      `Moving to blocked requires a comment with ## Question, ## Options, and ## Recommendation sections; missing: ${missingSections.join(", ")}`
+    );
+  }
+}
+
 function repositoryIssues(): Promise<JsonRecord[]> {
   return runJson<JsonRecord[]>([
     "issue",
@@ -291,6 +310,16 @@ async function ready(agent?: string): Promise<void> {
 }
 
 async function blocked(agent?: string): Promise<void> {
+  const rows = await taskRows();
+  const tasks = rows
+    .filter(
+      (row) => row.status === "blocked" && (!agent || row.agent === agent)
+    )
+    .sort(taskSort);
+  print(tasks);
+}
+
+async function dependencyBlocked(agent?: string): Promise<void> {
   const rows = await taskRows();
   const tasks = rows
     .filter(
@@ -583,6 +612,10 @@ async function runSimpleCommand(
     await blocked(options.get("agent"));
     return true;
   }
+  if (command === "dependency-blocked") {
+    await dependencyBlocked(options.get("agent"));
+    return true;
+  }
   if (command === "create") {
     await create(options);
     return true;
@@ -596,9 +629,18 @@ async function moveIssue(
 ): Promise<void> {
   const status = options.get("status");
   if (!status) {
-    fail("move requires --status <todo|in-progress|review|done>");
+    fail(`move requires --status <${STATUS_USAGE}>`);
   }
   const normalizedStatus = normalizeStatus(status);
+  const commentBody = options.get("body");
+  if (normalizedStatus === "blocked") {
+    validateBlockedComment(
+      commentBody ??
+        fail(
+          "Moving to blocked requires --body with Question, Options, and Recommendation sections"
+        )
+    );
+  }
   const pullRequest = options.get("pr");
   if (
     (normalizedStatus === "review" || normalizedStatus === "done") &&
@@ -619,6 +661,9 @@ async function moveIssue(
         "PR is not merged or has failing checks; run validate-delivery for details"
       );
     }
+  }
+  if (normalizedStatus === "blocked") {
+    await comment(issue, options);
   }
   await setField(issue, "Status", normalizedStatus);
   print({ issue, status: normalizedStatus });
