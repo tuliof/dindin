@@ -37,6 +37,7 @@ const projectNumber = process.env.GITHUB_PROJECT ?? DEFAULT_PROJECT;
 const projectOwner = process.env.GITHUB_PROJECT_OWNER ?? DEFAULT_OWNER;
 const repository = process.env.GITHUB_REPOSITORY ?? DEFAULT_REPOSITORY;
 const OWNER_PATTERN = /^## Owner\n([^\n]+)/m;
+const ISSUE_URL_PATTERN = /\/issues\/(\d+)$/;
 
 function fail(message: string): never {
   throw new Error(message);
@@ -182,6 +183,11 @@ function findItem(items: JsonRecord[], number: number): JsonRecord {
   return item ?? fail(`Issue #${number} is not in project ${projectNumber}`);
 }
 
+function requiredOption(options: Map<string, string>, name: string): string {
+  const value = options.get(name);
+  return value ?? fail(`Missing required option --${name}`);
+}
+
 function repositoryIssues(): Promise<JsonRecord[]> {
   return runJson<JsonRecord[]>([
     "issue",
@@ -292,6 +298,123 @@ async function blocked(agent?: string): Promise<void> {
     )
     .sort(taskSort);
   print(tasks);
+}
+
+async function create(options: Map<string, string>): Promise<void> {
+  const title = requiredOption(options, "title");
+  const body = requiredOption(options, "body");
+  const project = await projectInfo();
+  const labels = options.get("labels")?.split(",").filter(Boolean) ?? [];
+  const args = [
+    "issue",
+    "create",
+    "--repo",
+    repository,
+    "--title",
+    title,
+    "--body",
+    body,
+    "--project",
+    String(project.title),
+  ];
+
+  for (const label of labels) {
+    args.push("--label", label);
+  }
+  const parent = options.get("parent");
+  if (parent) {
+    args.push("--parent", parent);
+  }
+
+  const url = await runGh(args);
+  const issueMatch = url.match(ISSUE_URL_PATTERN);
+  const issue = issueMatch ? Number(issueMatch[1]) : undefined;
+  if (!issue) {
+    fail(`Could not determine issue number from: ${url}`);
+  }
+
+  const priority = options.get("priority");
+  const size = options.get("size");
+  if (priority) {
+    await setField(issue, "Priority", priority);
+  }
+  if (size) {
+    await setField(issue, "Size", size);
+  }
+  print({
+    issue,
+    labels,
+    priority: priority ?? null,
+    size: size ?? null,
+    title,
+    url,
+  });
+}
+
+async function comment(
+  issue: number,
+  options: Map<string, string>
+): Promise<void> {
+  const body = requiredOption(options, "body");
+  const url = await runGh([
+    "issue",
+    "comment",
+    String(issue),
+    "--repo",
+    repository,
+    "--body",
+    body,
+  ]);
+  print({ issue, url });
+}
+
+async function deliveryReport(pullRequest: string): Promise<JsonRecord> {
+  const data = await runJson<JsonRecord>([
+    "pr",
+    "view",
+    pullRequest,
+    "--repo",
+    repository,
+    "--json",
+    "number,url,state,isDraft,mergedAt,commits,statusCheckRollup,closingIssuesReferences",
+  ]);
+  const commits = Array.isArray(data.commits) ? data.commits : [];
+  const checks = Array.isArray(data.statusCheckRollup)
+    ? data.statusCheckRollup.filter(
+        (check): check is JsonRecord =>
+          typeof check === "object" && check !== null
+      )
+    : [];
+  const failedChecks = checks.filter((check) =>
+    ["FAILURE", "ERROR", "CANCELLED"].includes(String(check.conclusion))
+  );
+  const hasCommits = commits.length > 0;
+  const readyForReview = data.state === "OPEN" && data.isDraft === false;
+  const merged = Boolean(data.mergedAt);
+  return {
+    commitCount: commits.length,
+    failedChecks: failedChecks.map(
+      (check) => check.name ?? check.context ?? null
+    ),
+    hasCommits,
+    merged,
+    pullRequest: data.url,
+    readyForReview,
+    state: data.state,
+    validForDone: hasCommits && merged && failedChecks.length === 0,
+    validForReview: hasCommits && readyForReview && failedChecks.length === 0,
+  };
+}
+
+async function validateDelivery(
+  issue: number,
+  options: Map<string, string>
+): Promise<void> {
+  const pullRequest = requiredOption(options, "pr");
+  print({
+    issue,
+    ...(await deliveryReport(pullRequest)),
+  });
 }
 
 async function setField(
@@ -460,33 +583,67 @@ async function runSimpleCommand(
     await blocked(options.get("agent"));
     return true;
   }
+  if (command === "create") {
+    await create(options);
+    return true;
+  }
   return false;
 }
 
-async function main(): Promise<void> {
-  const { command, options } = parseArgs(process.argv.slice(2));
-  if (await runSimpleCommand(command, options)) {
-    return;
+async function moveIssue(
+  issue: number,
+  options: Map<string, string>
+): Promise<void> {
+  const status = options.get("status");
+  if (!status) {
+    fail("move requires --status <todo|in-progress|review|done>");
   }
-
-  const issue = Number(options.get("issue"));
-  if (!Number.isInteger(issue) || issue < 1) {
-    fail("This command requires --issue <number>");
+  const normalizedStatus = normalizeStatus(status);
+  const pullRequest = options.get("pr");
+  if (
+    (normalizedStatus === "review" || normalizedStatus === "done") &&
+    !pullRequest
+  ) {
+    fail(`Moving to ${normalizedStatus} requires --pr <number-or-url>`);
   }
+  if (normalizedStatus === "done" && options.get("qa-pass") !== "true") {
+    fail("Moving to done requires --qa-pass true");
+  }
+  if (pullRequest) {
+    const delivery = await deliveryReport(pullRequest);
+    if (normalizedStatus === "review" && delivery.validForReview !== true) {
+      fail("PR is not ready for review; run validate-delivery for details");
+    }
+    if (normalizedStatus === "done" && delivery.validForDone !== true) {
+      fail(
+        "PR is not merged or has failing checks; run validate-delivery for details"
+      );
+    }
+  }
+  await setField(issue, "Status", normalizedStatus);
+  print({ issue, status: normalizedStatus });
+}
 
+async function runIssueCommand(
+  command: string,
+  issue: number,
+  options: Map<string, string>
+): Promise<boolean> {
   if (command === "show") {
     await show(issue);
-    return;
+    return true;
+  }
+  if (command === "comment") {
+    await comment(issue, options);
+    return true;
+  }
+  if (command === "validate-delivery") {
+    await validateDelivery(issue, options);
+    return true;
   }
   if (command === "move") {
-    const status = options.get("status");
-    if (!status) {
-      fail("move requires --status <todo|in-progress|review|done>");
-    }
-    const normalizedStatus = normalizeStatus(status);
-    await setField(issue, "Status", normalizedStatus);
-    print({ issue, status: normalizedStatus });
-    return;
+    await moveIssue(issue, options);
+    return true;
   }
   if (command === "set-metadata") {
     const priority = options.get("priority");
@@ -501,6 +658,22 @@ async function main(): Promise<void> {
       await setField(issue, "Size", size);
     }
     print({ issue, priority: priority ?? null, size: size ?? null });
+    return true;
+  }
+  return false;
+}
+
+async function main(): Promise<void> {
+  const { command, options } = parseArgs(process.argv.slice(2));
+  if (await runSimpleCommand(command, options)) {
+    return;
+  }
+
+  const issue = Number(options.get("issue"));
+  if (!Number.isInteger(issue) || issue < 1) {
+    fail("This command requires --issue <number>");
+  }
+  if (await runIssueCommand(command, issue, options)) {
     return;
   }
 

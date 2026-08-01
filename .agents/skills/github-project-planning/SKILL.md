@@ -6,4 +6,4 @@ user-invocable: true
 
 # GitHub Project Planning
 
-Create implementation-sized tasks, preferably `S` or `M`; use grouping parents for larger work. Include an imperative title, scope, context, testable acceptance criteria, out-of-scope items, dependencies, references, owner (`be`, `fe`, or `qa`), labels, priority, size, and status. Use observable behavior, cover relevant error, security, accessibility, and data-integrity cases, check duplicates, split unrelated work, and never include secrets or private data.
+Create focused product or SDLC-improvement tasks, preferably `S`/`M`; use grouping parents for larger work. Include an imperative title, scope, context, testable acceptance criteria, out-of-scope items, dependencies, references, owner, labels, priority, size, and status. Improvement tasks record source task/agent, evidence, impact, and outcome. Use observable behavior, check duplicates, split unrelated work, and never include secrets or private data.
