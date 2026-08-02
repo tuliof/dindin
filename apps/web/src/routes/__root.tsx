@@ -6,11 +6,13 @@ import {
   HeadContent,
   Outlet,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { createMiddleware } from "@tanstack/react-start";
 import { evlogErrorHandler } from "evlog/nitro/v3";
 
+import { ThemeProvider } from "@/components/theme-provider";
 import type { orpc } from "@/utils/orpc";
 
 import Header from "../components/header";
@@ -50,16 +52,34 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 });
 
 function RootDocument() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const isAuthenticatedPath = [
+    "/dashboard",
+    "/sync",
+    "/transactions",
+    "/ai",
+    "/settings",
+  ].some((path) => pathname.startsWith(path));
+  const showGlobalHeader = !isAuthenticatedPath;
+
   return (
-    <html className="dark" lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        <div className="grid h-svh grid-rows-[auto_1fr]">
-          <Header />
-          <Outlet />
-        </div>
+        <ThemeProvider>
+          <div
+            className={
+              showGlobalHeader ? "grid h-svh grid-rows-[auto_1fr]" : "h-svh"
+            }
+          >
+            {showGlobalHeader ? <Header /> : null}
+            <Outlet />
+          </div>
+        </ThemeProvider>
         <Toaster richColors />
         <TanStackRouterDevtools position="bottom-left" />
         <ReactQueryDevtools buttonPosition="bottom-right" position="bottom" />

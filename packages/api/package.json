@@ -21,6 +21,8 @@
     "@orpc/server": "catalog:",
     "@orpc/zod": "catalog:",
     "dotenv": "catalog:",
+    "drizzle-orm": "^0.45.2",
+    "evlog": "^2.22.0",
     "plaid": "^45.0.0",
     "zod": "catalog:"
   },

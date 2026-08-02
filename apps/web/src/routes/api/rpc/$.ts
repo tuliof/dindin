@@ -6,11 +6,13 @@ import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { createFileRoute } from "@tanstack/react-router";
+import { getRequest } from "@tanstack/react-start/server";
+import type { RequestLogger } from "evlog";
 
 const rpcHandler = new RPCHandler(appRouter, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      logRpcError(error);
     }),
   ],
 });
@@ -18,7 +20,7 @@ const rpcHandler = new RPCHandler(appRouter, {
 const apiHandler = new OpenAPIHandler(appRouter, {
   interceptors: [
     onError((error) => {
-      console.error(error);
+      logRpcError(error);
     }),
   ],
   plugins: [
@@ -28,9 +30,16 @@ const apiHandler = new OpenAPIHandler(appRouter, {
   ],
 });
 
+type RequestWithEvlogContext = Request & {
+  context: { log?: RequestLogger };
+};
+
 async function handle({ request }: { request: Request }) {
+  const requestWithContext = getRequest() as RequestWithEvlogContext;
+  const { context: requestContext } = requestWithContext;
+  const { log } = requestContext;
   const rpcResult = await rpcHandler.handle(request, {
-    context: await createContext({ req: request }),
+    context: await createContext({ log, req: request }),
     prefix: "/api/rpc",
   });
   if (rpcResult.response) {
@@ -38,7 +47,7 @@ async function handle({ request }: { request: Request }) {
   }
 
   const apiResult = await apiHandler.handle(request, {
-    context: await createContext({ req: request }),
+    context: await createContext({ log, req: request }),
     prefix: "/api/rpc/api-reference",
   });
   if (apiResult.response) {
@@ -46,6 +55,14 @@ async function handle({ request }: { request: Request }) {
   }
 
   return new Response("Not found", { status: 404 });
+}
+
+function logRpcError(error: unknown) {
+  const requestWithContext = getRequest() as RequestWithEvlogContext;
+  const { context: requestContext } = requestWithContext;
+  const { log } = requestContext;
+  const message = error instanceof Error ? error.message : "Unknown oRPC error";
+  log?.error(new Error(`oRPC request failed: ${message}`));
 }
 
 export const Route = createFileRoute("/api/rpc/$")({

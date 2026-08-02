@@ -1,0 +1,1 @@
+ALTER TABLE `plaid_item` ADD `institution_name` text;

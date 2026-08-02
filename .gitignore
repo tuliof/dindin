@@ -35,6 +35,7 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
+.playwright-cli/
 
 # Turbo
 .turbo
@@ -50,6 +51,7 @@ coverage
 
 # Misc
 *.tgz
+local.db
 .cache
 tmp
 temp
