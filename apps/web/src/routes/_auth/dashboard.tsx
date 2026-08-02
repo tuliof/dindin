@@ -1,9 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import dashboardData from "@/app/dashboard/data.json";
-import { ChartAreaInteractive } from "@/components/chart-area-interactive";
-import { DataTable } from "@/components/data-table";
 import { FinanceShell } from "@/components/finance-shell";
-import { SectionCards } from "@/components/section-cards";
+import { PlaidDashboard } from "@/components/plaid-dashboard";
 
 export const Route = createFileRoute("/_auth/dashboard")({
   component: RouteComponent,
@@ -36,9 +33,7 @@ function RouteComponent() {
                 : "Your accounts, goals, spending, and household share"}
             </p>
           </div>
-          <SectionCards />
-          <ChartAreaInteractive />
-          <DataTable data={dashboardData} />
+          <PlaidDashboard />
         </div>
       )}
     </FinanceShell>
