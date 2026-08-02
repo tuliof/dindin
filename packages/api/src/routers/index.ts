@@ -58,6 +58,134 @@ export const appRouter = {
 
         return { linkToken: response.data.link_token };
       }),
+    dashboardSummary: protectedProcedure.handler(async ({ context }) => {
+      const items = await db
+        .select()
+        .from(plaidItem)
+        .where(eq(plaidItem.userId, context.session.user.id));
+      if (items.length === 0) {
+        return {
+          accountCount: 0,
+          cashFlow: [],
+          categories: [],
+          currentMonth: { income: 0, spending: 0 },
+          lastSyncedAt: null,
+          pendingConnections: 0,
+          reauthConnections: 0,
+          recentTransactions: [],
+          totalBalance: 0,
+        };
+      }
+
+      const itemIds = items.map((item) => item.id);
+      const accounts = await db
+        .select()
+        .from(plaidAccount)
+        .where(inArray(plaidAccount.plaidItemId, itemIds));
+      const transactions = await db
+        .select()
+        .from(plaidTransaction)
+        .where(inArray(plaidTransaction.plaidItemId, itemIds));
+      const accountNames = new Map(
+        accounts.map((account) => [account.accountId, account.name])
+      );
+      const institutionNames = new Map(
+        items.map((item) => [
+          item.id,
+          item.institutionName ?? "Unknown institution",
+        ])
+      );
+      const monthBuckets = createMonthBuckets(6);
+      const currentMonth = formatMonthKey(new Date());
+      const categoryTotals = new Map<string, number>();
+      let currentMonthIncome = 0;
+      let currentMonthSpending = 0;
+
+      for (const transaction of transactions) {
+        const { amount } = transaction;
+        const month = transaction.date.slice(0, 7);
+        const bucket = monthBuckets.get(month);
+        if (bucket) {
+          if (amount >= 0) {
+            bucket.spending += amount;
+          } else {
+            bucket.income += Math.abs(amount);
+          }
+        }
+        if (month === currentMonth) {
+          if (amount >= 0) {
+            currentMonthSpending += amount;
+          } else {
+            currentMonthIncome += Math.abs(amount);
+          }
+        }
+        if (amount > 0) {
+          const category = parseCategory(transaction.category)[0] ?? "Other";
+          categoryTotals.set(
+            category,
+            (categoryTotals.get(category) ?? 0) + amount
+          );
+        }
+      }
+
+      const totalBalance = accounts.reduce((total, account) => {
+        const balances = parseBalances(account.balances);
+        return total + getCurrentBalance(balances);
+      }, 0);
+      const lastSyncedAt = items.reduce<Date | null>((latest, item) => {
+        if (!item.lastSyncCompletedAt) {
+          return latest;
+        }
+        return !latest || item.lastSyncCompletedAt > latest
+          ? item.lastSyncCompletedAt
+          : latest;
+      }, null);
+      const recentTransactions = [...transactions]
+        .sort((left, right) => right.date.localeCompare(left.date))
+        .slice(0, 8)
+        .map((transaction) => ({
+          accountName:
+            accountNames.get(transaction.accountId) ?? "Unknown account",
+          amount: transaction.amount,
+          category: parseCategory(transaction.category)[0] ?? "Other",
+          date: transaction.date,
+          id: transaction.id,
+          institutionName:
+            institutionNames.get(transaction.plaidItemId) ??
+            "Unknown institution",
+          merchantName: transaction.merchantName ?? transaction.name,
+          pending: transaction.pending,
+        }));
+
+      return {
+        accountCount: accounts.length,
+        cashFlow: [...monthBuckets.values()].map(
+          ({ key, label, income, spending }) => ({
+            income,
+            key,
+            label,
+            spending,
+          })
+        ),
+        categories: [...categoryTotals.entries()]
+          .sort((left, right) => right[1] - left[1])
+          .slice(0, 5)
+          .map(([name, amount]) => ({ amount, name })),
+        currentMonth: {
+          income: currentMonthIncome,
+          spending: currentMonthSpending,
+        },
+        lastSyncedAt,
+        pendingConnections: items.filter(
+          (item) => item.syncStatus === "pending"
+        ).length,
+        reauthConnections: items.filter(
+          (item) => item.syncStatus === "reauth_required"
+        ).length,
+        recentTransactions,
+        totalBalance,
+      };
+    }),
     exchangePublicToken: publicProcedure
       .input(z.object({ publicToken: z.string().min(1) }))
       .handler(async ({ context, input }) => {
@@ -692,6 +820,41 @@ function getPlaidErrorMessage(error: unknown): string | null {
 
   const message = (data as { error_message?: unknown }).error_message;
   return typeof message === "string" ? message : null;
+}
+
+interface MonthBucket {
+  income: number;
+  key: string;
+  label: string;
+  spending: number;
+}
+
+function createMonthBuckets(monthCount: number): Map<string, MonthBucket> {
+  const now = new Date();
+  const buckets = new Map<string, MonthBucket>();
+  for (let offset = monthCount - 1; offset >= 0; offset -= 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const key = formatMonthKey(date);
+    buckets.set(key, {
+      income: 0,
+      key,
+      label: date.toLocaleDateString("en-US", { month: "short" }),
+      spending: 0,
+    });
+  }
+  return buckets;
+}
+
+function formatMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getCurrentBalance(value: unknown): number {
+  if (typeof value !== "object" || value === null) {
+    return 0;
+  }
+  const { current } = value as { current?: unknown };
+  return typeof current === "number" ? current : 0;
 }
 
 function parseBalances(value: string, log?: RequestLogger): unknown {
