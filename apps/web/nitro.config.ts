@@ -10,4 +10,5 @@ export default defineConfig({
       env: { service: "dindin-web" },
     }),
   ],
+  plugins: ["./server/plugins/log-stream"],
 });
