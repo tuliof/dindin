@@ -1,4 +1,7 @@
-"use client";
+/* biome-ignore-all lint/a11y/noNoninteractiveElementInteractions: The addon focuses its adjacent input when the non-button addon area is clicked. */
+/* biome-ignore-all lint/a11y/useKeyWithClickEvents: The addon focus behavior is supplementary to the adjacent input control. */
+/* biome-ignore-all lint/a11y/useSemanticElements: The group role is part of the shared input-group contract. */
+/* biome-ignore-all lint/performance/noJsxPropsBind: The addon focus handler is a shared primitive interaction. */
 
 import { Button } from "@dindin/ui/components/button";
 import { Input } from "@dindin/ui/components/input";
@@ -7,19 +10,15 @@ import { cn } from "@dindin/ui/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
-function InputGroup({ className, ...props }: React.ComponentProps<"fieldset">) {
+function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <fieldset
+    <div
       className={cn(
-        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-none border border-input bg-background shadow-xs outline-none transition-[color,box-shadow] has-[>textarea]:h-auto dark:bg-input/30",
-        "has-[>[data-align=inline-end]]:[&>input]:pr-2 has-[>[data-align=inline-start]]:[&>input]:pl-2",
-        "has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>[data-align=block-start]]:[&>input]:pb-3",
-        "has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-end]]:[&>input]:pt-3",
-        "has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50",
-        "has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-1 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40",
+        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-none border border-input outline-none transition-colors in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-start]]:h-auto has-[>textarea]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:flex-col has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot][aria-invalid=true]]:border-destructive has-disabled:bg-input/50 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:ring-1 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 dark:bg-input/30 dark:has-disabled:bg-input/80 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
         className
       )}
       data-slot="input-group"
+      role="group"
       {...props}
     />
   );
@@ -49,18 +48,20 @@ const inputGroupAddonVariants = cva(
 function InputGroupAddon({
   className,
   align = "inline-start",
-  htmlFor,
   ...props
-}: Omit<React.ComponentProps<"label">, "htmlFor"> &
-  VariantProps<typeof inputGroupAddonVariants> & { htmlFor: string }) {
+}: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
-    // The wrapper requires and forwards the control association to each caller.
-    // biome-ignore lint/a11y/noLabelWithoutControl: htmlFor is required by this wrapper
-    <label
+    <div
       className={cn(inputGroupAddonVariants({ align }), className)}
       data-align={align}
       data-slot="input-group-addon"
-      htmlFor={htmlFor}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button")) {
+          return;
+        }
+        e.currentTarget.parentElement?.querySelector("input")?.focus();
+      }}
+      role="group"
       {...props}
     />
   );
@@ -74,9 +75,9 @@ const inputGroupButtonVariants = cva(
     },
     variants: {
       size: {
-        "icon-sm": "size-7 rounded-none p-0 has-[>svg]:p-0",
+        "icon-sm": "size-7 p-0 has-[>svg]:p-0",
         "icon-xs": "size-6 rounded-none p-0 has-[>svg]:p-0",
-        sm: "h-7 gap-1 rounded-none px-2",
+        sm: "gap-1",
         xs: "h-6 gap-1 rounded-none px-1.5 [&>svg:not([class*='size-'])]:size-3.5",
       },
     },

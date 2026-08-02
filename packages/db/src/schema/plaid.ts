@@ -1,0 +1,70 @@
+import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+
+import { user } from "./auth";
+
+export const plaidItem = sqliteTable(
+  "plaid_item",
+  {
+    accessToken: text("access_token").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    cursor: text("cursor"),
+    id: text("id").primaryKey(),
+    institutionId: text("institution_id"),
+    institutionName: text("institution_name"),
+    itemId: text("item_id").notNull(),
+    transactionLastFailedAt: text("transaction_last_failed_at"),
+    transactionLastSuccessfulAt: text("transaction_last_successful_at"),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .$onUpdate(() => new Date())
+      .notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    webhookCode: text("webhook_code"),
+    webhookSentAt: text("webhook_sent_at"),
+    webhookUrl: text("webhook_url"),
+  },
+  (table) => [
+    index("plaid_item_user_id_idx").on(table.userId),
+    uniqueIndex("plaid_item_item_id_unique").on(table.itemId),
+  ]
+);
+
+export const plaidAccount = sqliteTable(
+  "plaid_account",
+  {
+    accountId: text("account_id").notNull(),
+    balances: text("balances").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    id: text("id").primaryKey(),
+    mask: text("mask"),
+    name: text("name").notNull(),
+    officialName: text("official_name"),
+    plaidItemId: text("plaid_item_id")
+      .notNull()
+      .references(() => plaidItem.id, { onDelete: "cascade" }),
+    subtype: text("subtype"),
+    type: text("type").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("plaid_account_item_id_idx").on(table.plaidItemId),
+    uniqueIndex("plaid_account_item_account_id_unique").on(
+      table.plaidItemId,
+      table.accountId
+    ),
+  ]
+);

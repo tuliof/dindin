@@ -8,6 +8,7 @@ import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import type { RequestLogger } from "evlog";
 import { toast } from "sonner";
 
 export function createQueryClient() {
@@ -31,7 +32,13 @@ export function createQueryClient() {
 const getORPCClient = createIsomorphicFn()
   .server(() =>
     createRouterClient(appRouter, {
-      context: async () => createContext({ req: getRequest() }),
+      context: () => {
+        const request = getRequest() as RequestWithEvlogContext;
+        return createContext({
+          log: request.context.log as RequestLogger,
+          req: request,
+        });
+      },
     })
   )
   .client((): RouterClient<typeof appRouter> => {
@@ -47,6 +54,10 @@ const getORPCClient = createIsomorphicFn()
 
     return createORPCClient(link);
   });
+
+type RequestWithEvlogContext = Request & {
+  context: { log?: RequestLogger };
+};
 
 export const client: RouterClient<typeof appRouter> = getORPCClient();
 

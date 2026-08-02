@@ -130,3 +130,18 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 ---
 
 Most formatting and common issues are automatically fixed by Biome. Run `bun x ultracite fix` before committing to ensure compliance.
+
+## shadcn UI Standard
+
+Use `packages/ui/components.json` as the only shadcn source of truth:
+
+```bash
+bunx --bun shadcn@latest add <component> -c packages/ui
+```
+
+Run shadcn component commands from `packages/ui`, or use the `-c packages/ui`
+workspace flag from the repository root. Keep shared primitives in
+`packages/ui/src/components` and app-specific compositions in
+`apps/web/src/components`. Preserve the configured `base-lyra`, Base UI,
+Tailwind v4, Lucide, and Inter Variable standard. Do not introduce Radix UI or
+React Aria equivalents for existing shared components.
