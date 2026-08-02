@@ -24,7 +24,6 @@ import {
   type ComponentProps,
   type CSSProperties,
   createContext,
-  type MouseEvent,
   useCallback,
   useContext,
   useEffect,
@@ -269,13 +268,14 @@ function SidebarTrigger({
   ...props
 }: ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar();
-  const handleClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      onClick?.(event);
-      toggleSidebar();
-    },
-    [onClick, toggleSidebar]
-  );
+  const handleClick: NonNullable<ComponentProps<typeof Button>["onClick"]> =
+    useCallback(
+      (event) => {
+        onClick?.(event);
+        toggleSidebar();
+      },
+      [onClick, toggleSidebar]
+    );
 
   return (
     <Button
