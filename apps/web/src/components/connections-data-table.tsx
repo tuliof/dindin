@@ -270,11 +270,11 @@ function formatTransactionStatus(
   if (connection.transactionLastSuccessfulAt) {
     return `Updated ${formatSyncedAt(connection.transactionLastSuccessfulAt)}`;
   }
-  if (connection.transactionLastFailedAt) {
-    return `Failed ${formatSyncedAt(connection.transactionLastFailedAt)}`;
-  }
   if (connection.itemErrorCode) {
     return `Action needed: ${connection.itemErrorCode}`;
+  }
+  if (connection.transactionLastFailedAt) {
+    return `Failed ${formatSyncedAt(connection.transactionLastFailedAt)}`;
   }
   return "Waiting for update";
 }
