@@ -60,6 +60,7 @@ function RootDocument() {
     "/sync",
     "/transactions",
     "/ai",
+    "/logs",
     "/settings",
   ].some((path) => pathname.startsWith(path));
   const showGlobalHeader = !isAuthenticatedPath;
