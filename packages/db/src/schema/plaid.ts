@@ -21,6 +21,8 @@ export const plaidItem = sqliteTable(
     id: text("id").primaryKey(),
     institutionId: text("institution_id"),
     institutionName: text("institution_name"),
+    itemErrorCode: text("item_error_code"),
+    itemErrorMessage: text("item_error_message"),
     itemId: text("item_id").notNull(),
     lastSyncCompletedAt: integer("last_sync_completed_at", {
       mode: "timestamp_ms",

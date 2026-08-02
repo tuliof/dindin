@@ -25,7 +25,12 @@ import {
   getExpandedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDownIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 export interface PlaidConnectionAccount {
@@ -42,6 +47,8 @@ export interface PlaidConnection {
   accounts: PlaidConnectionAccount[];
   institutionId: string | null;
   institutionName: string | null;
+  itemErrorCode: string | null;
+  itemErrorMessage: string | null;
   itemId: string;
   savedAt: Date | string;
   transactionLastFailedAt: string | null;
@@ -64,10 +71,12 @@ export function ConnectionsDataTable({
   connections,
   onRemoveAccount,
   onRemoveConnection,
+  onReauthenticate,
 }: {
   connections: PlaidConnection[];
   onRemoveAccount: (accountId: string) => void;
   onRemoveConnection: (itemId: string) => void;
+  onReauthenticate: (itemId: string) => void;
 }) {
   const rows = useMemo(
     () =>
@@ -86,8 +95,9 @@ export function ConnectionsDataTable({
     [connections]
   );
   const columns = useMemo(
-    () => createColumns({ onRemoveAccount, onRemoveConnection }),
-    [onRemoveAccount, onRemoveConnection]
+    () =>
+      createColumns({ onReauthenticate, onRemoveAccount, onRemoveConnection }),
+    [onRemoveAccount, onRemoveConnection, onReauthenticate]
   );
   const table = useReactTable({
     columns,
@@ -143,9 +153,11 @@ export function ConnectionsDataTable({
 function createColumns({
   onRemoveAccount,
   onRemoveConnection,
+  onReauthenticate,
 }: {
   onRemoveAccount: (accountId: string) => void;
   onRemoveConnection: (itemId: string) => void;
+  onReauthenticate: (itemId: string) => void;
 }): ColumnDef<ConnectionRow>[] {
   return [
     {
@@ -237,6 +249,7 @@ function createColumns({
     {
       cell: ({ row }) => (
         <ConnectionAction
+          onReauthenticate={onReauthenticate}
           onRemoveAccount={onRemoveAccount}
           onRemoveConnection={onRemoveConnection}
           row={row.original}
@@ -257,6 +270,9 @@ function formatTransactionStatus(
   if (connection.transactionLastSuccessfulAt) {
     return `Updated ${formatSyncedAt(connection.transactionLastSuccessfulAt)}`;
   }
+  if (connection.itemErrorCode) {
+    return `Action needed: ${connection.itemErrorCode}`;
+  }
   if (connection.transactionLastFailedAt) {
     return `Failed ${formatSyncedAt(connection.transactionLastFailedAt)}`;
   }
@@ -273,10 +289,12 @@ function formatWebhookStatus(connection: PlaidConnection | undefined): string {
 function ConnectionAction({
   onRemoveAccount,
   onRemoveConnection,
+  onReauthenticate,
   row,
 }: {
   onRemoveAccount: (accountId: string) => void;
   onRemoveConnection: (itemId: string) => void;
+  onReauthenticate: (itemId: string) => void;
   row: ConnectionRow;
 }) {
   const [open, setOpen] = useState(false);
@@ -295,9 +313,28 @@ function ConnectionAction({
     row.kind === "institution"
       ? `Remove ${row.institution?.institutionName ?? "institution"}`
       : `Remove ${row.account?.name}`;
+  const canReauthenticate =
+    row.kind === "institution" &&
+    row.institution?.itemErrorCode === "ITEM_LOGIN_REQUIRED";
+  const handleReauthenticate = useCallback(() => {
+    if (row.institution) {
+      onReauthenticate(row.institution.itemId);
+    }
+  }, [onReauthenticate, row.institution]);
 
   return (
-    <div className="text-right">
+    <div className="flex justify-end gap-1">
+      {canReauthenticate ? (
+        <Button
+          aria-label={`Reconnect ${row.institution?.institutionName ?? "institution"}`}
+          onClick={handleReauthenticate}
+          size="icon-sm"
+          title="Reconnect institution"
+          variant="ghost"
+        >
+          <RefreshCwIcon />
+        </Button>
+      ) : null}
       <AlertDialog onOpenChange={setOpen} open={open}>
         <AlertDialogTrigger
           render={<Button aria-label={label} size="icon-sm" variant="ghost" />}
