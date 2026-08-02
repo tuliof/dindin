@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -21,6 +22,11 @@ export const plaidItem = sqliteTable(
     institutionId: text("institution_id"),
     institutionName: text("institution_name"),
     itemId: text("item_id").notNull(),
+    lastSyncCompletedAt: integer("last_sync_completed_at", {
+      mode: "timestamp_ms",
+    }),
+    lastSyncError: text("last_sync_error"),
+    syncStatus: text("sync_status").default("pending").notNull(),
     transactionLastFailedAt: text("transaction_last_failed_at"),
     transactionLastSuccessfulAt: text("transaction_last_successful_at"),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
@@ -66,5 +72,35 @@ export const plaidAccount = sqliteTable(
       table.plaidItemId,
       table.accountId
     ),
+  ]
+);
+
+export const plaidTransaction = sqliteTable(
+  "plaid_transaction",
+  {
+    accountId: text("account_id").notNull(),
+    amount: real("amount").notNull(),
+    authorizedDate: text("authorized_date"),
+    category: text("category"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    date: text("date").notNull(),
+    id: text("id").primaryKey(),
+    isoCurrencyCode: text("iso_currency_code"),
+    merchantName: text("merchant_name"),
+    name: text("name").notNull(),
+    pending: integer("pending", { mode: "boolean" }).notNull(),
+    plaidItemId: text("plaid_item_id")
+      .notNull()
+      .references(() => plaidItem.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("plaid_transaction_item_id_idx").on(table.plaidItemId),
+    index("plaid_transaction_account_id_idx").on(table.accountId),
+    index("plaid_transaction_date_idx").on(table.date),
   ]
 );

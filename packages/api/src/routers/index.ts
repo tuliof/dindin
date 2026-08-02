@@ -1,7 +1,11 @@
 import { db } from "@dindin/db";
-import { plaidAccount, plaidItem } from "@dindin/db/schema/plaid";
+import {
+  plaidAccount,
+  plaidItem,
+  plaidTransaction,
+} from "@dindin/db/schema/plaid";
 import type { RouterClient } from "@orpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { RequestLogger } from "evlog";
 import { CountryCode, Products } from "plaid";
 import { z } from "zod";
@@ -45,14 +49,10 @@ export const appRouter = {
           itemDetails?.institutionId ??
           accountsResponse.data.item.institution_id;
         const institutionName = itemDetails?.institutionName ?? null;
-        const transactionResult = await getTransactions(
-          plaidClient,
-          accessToken,
-          context.log
-        );
         const itemId = exchangeResponse.data.item_id;
         const userId = context.session?.user.id;
         let savedConnectionId: string | null = null;
+        let syncStatus: "complete" | "pending" | "error" = "pending";
 
         if (userId) {
           const existingItem = await db
@@ -70,6 +70,8 @@ export const appRouter = {
                 accessToken,
                 institutionId,
                 institutionName,
+                lastSyncError: null,
+                syncStatus: "pending",
                 transactionLastFailedAt: itemDetails?.transactionLastFailedAt,
                 transactionLastSuccessfulAt:
                   itemDetails?.transactionLastSuccessfulAt,
@@ -117,6 +119,14 @@ export const appRouter = {
               }))
             );
           }
+
+          const syncResult = await syncPlaidItem(
+            plaidClient,
+            connectionId,
+            accessToken,
+            context.log
+          );
+          syncStatus = syncResult.status;
         }
 
         return {
@@ -134,8 +144,9 @@ export const appRouter = {
           itemId,
           itemStatus: itemDetails,
           savedConnectionId,
-          transactions: transactionResult.transactions,
-          transactionsPending: transactionResult.pending,
+          syncStatus,
+          transactions: [],
+          transactionsPending: syncStatus === "pending",
         };
       }),
     listConnections: protectedProcedure.handler(async ({ context }) => {
@@ -210,49 +221,59 @@ export const appRouter = {
           .select()
           .from(plaidItem)
           .where(eq(plaidItem.userId, context.session.user.id));
-        const accounts = await db.select().from(plaidAccount);
-        const results = await Promise.all(
-          items.map(async (item) => {
-            const result = await getTransactions(
-              createPlaidClientFromRuntimeConfig(),
-              item.accessToken,
-              context.log
-            );
-            return {
-              institutionId: item.institutionId,
-              institutionName: item.institutionName,
-              itemId: item.itemId,
-              pending: result.pending,
-              transactions: result.transactions.map((transaction) => ({
-                accountId: transaction.account_id,
-                accountName:
-                  accounts.find(
-                    (account) =>
-                      account.plaidItemId === item.id &&
-                      account.accountId === transaction.account_id
-                  )?.name ?? "Unknown account",
-                amount: transaction.amount,
-                category: transaction.category,
-                currency: transaction.iso_currency_code,
-                date: transaction.date,
-                merchantName: transaction.merchant_name,
-                name: transaction.name,
-                pending: transaction.pending,
-                transactionId: transaction.transaction_id,
-              })),
-            };
-          })
-        );
-
-        const allTransactions = results.flatMap((result) =>
-          result.transactions.map((transaction) => ({
-            ...transaction,
-            institutionId: result.institutionId,
-            institutionName: result.institutionName,
-          }))
-        );
+        if (items.length === 0) {
+          return {
+            accounts: [],
+            institutions: [],
+            page: input.page,
+            pageSize: input.pageSize,
+            pendingConnections: [],
+            total: 0,
+            transactions: [],
+          };
+        }
+        const accounts = await db
+          .select()
+          .from(plaidAccount)
+          .where(
+            inArray(
+              plaidAccount.plaidItemId,
+              items.map((item) => item.id)
+            )
+          );
+        const allTransactions = await db
+          .select()
+          .from(plaidTransaction)
+          .where(
+            inArray(
+              plaidTransaction.plaidItemId,
+              items.map((item) => item.id)
+            )
+          );
+        const transactionRows = allTransactions.map((transaction) => {
+          const item = items.find(
+            (candidate) => candidate.id === transaction.plaidItemId
+          );
+          const account = accounts.find(
+            (candidate) =>
+              candidate.plaidItemId === transaction.plaidItemId &&
+              candidate.accountId === transaction.accountId
+          );
+          return {
+            ...toTransactionResponse(transaction),
+            accountName: account?.name ?? "Unknown account",
+            institutionId: item?.institutionId ?? null,
+            institutionName: item?.institutionName ?? null,
+          };
+        });
+        const pendingConnections = items
+          .filter((item) => item.syncStatus === "pending")
+          .map((item) => ({
+            institutionId: item.institutionId,
+            itemId: item.itemId,
+          }));
         const normalizedSearch = input.search?.toLowerCase();
-        const filteredTransactions = allTransactions
+        const filteredTransactions = transactionRows
           // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Server-side transaction filters intentionally share one predicate.
           .filter((transaction) => {
             if (
@@ -323,9 +344,7 @@ export const appRouter = {
           })),
           page: input.page,
           pageSize: input.pageSize,
-          pendingConnections: results
-            .filter((result) => result.pending)
-            .map(({ institutionId, itemId }) => ({ institutionId, itemId })),
+          pendingConnections,
           total: filteredTransactions.length,
           transactions: filteredTransactions.slice(
             start,
@@ -383,22 +402,37 @@ export const appRouter = {
         await db.delete(plaidItem).where(eq(plaidItem.id, item.id));
         return { removed: true };
       }),
+    syncItem: protectedProcedure
+      .input(z.object({ itemId: z.string().min(1) }))
+      .handler(async ({ context, input }) => {
+        const item = await db
+          .select()
+          .from(plaidItem)
+          .where(
+            and(
+              eq(plaidItem.itemId, input.itemId),
+              eq(plaidItem.userId, context.session.user.id)
+            )
+          )
+          .get();
+
+        if (!item) {
+          return { status: "missing" as const };
+        }
+
+        return syncPlaidItem(
+          createPlaidClientFromRuntimeConfig(),
+          item.id,
+          item.accessToken,
+          context.log
+        );
+      }),
   },
   privateData: protectedProcedure.handler(({ context }) => ({
     message: "This is private",
     user: context.session?.user,
   })),
 };
-
-function formatPlaidDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function twoYearsAgo(): Date {
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - 2);
-  return date;
-}
 
 async function getItemDetails(
   plaidClient: ReturnType<typeof createPlaidClientFromRuntimeConfig>,
@@ -438,26 +472,150 @@ interface PlaidItemDetails {
   webhookUrl: string | null;
 }
 
-async function getTransactions(
+async function syncPlaidItem(
   plaidClient: ReturnType<typeof createPlaidClientFromRuntimeConfig>,
+  plaidItemId: string,
   accessToken: string,
   log?: RequestLogger
 ) {
+  const item = await db
+    .select({ cursor: plaidItem.cursor })
+    .from(plaidItem)
+    .where(eq(plaidItem.id, plaidItemId))
+    .get();
+  let cursor = item?.cursor ?? undefined;
+
+  await db
+    .update(plaidItem)
+    .set({ lastSyncError: null, syncStatus: "syncing" })
+    .where(eq(plaidItem.id, plaidItemId));
+
   try {
-    const response = await plaidClient.transactionsGet({
-      access_token: accessToken,
-      end_date: formatPlaidDate(new Date()),
-      start_date: formatPlaidDate(twoYearsAgo()),
-    });
-    return { pending: false, transactions: response.data.transactions };
-  } catch (error) {
-    if (getPlaidErrorCode(error) === "PRODUCT_NOT_READY") {
-      log?.set({ plaid: { transactions: "pending" } });
-      return { pending: true, transactions: [] };
+    let hasMore = true;
+    while (hasMore) {
+      // Sync pages must run sequentially because each request uses the prior cursor.
+      // biome-ignore lint/performance/noAwaitInLoops: Plaid cursors require sequential pagination.
+      const response = await plaidClient.transactionsSync({
+        access_token: accessToken,
+        ...(cursor ? { cursor } : {}),
+        count: 500,
+      });
+      const {
+        added,
+        modified,
+        next_cursor: nextCursor,
+        removed,
+      } = response.data;
+
+      await Promise.all(
+        [...added, ...modified].map((transaction) =>
+          db
+            .insert(plaidTransaction)
+            .values({
+              accountId: transaction.account_id,
+              amount: transaction.amount,
+              authorizedDate: transaction.authorized_date,
+              category: transaction.category
+                ? JSON.stringify(transaction.category)
+                : null,
+              date: transaction.date,
+              id: transaction.transaction_id,
+              isoCurrencyCode: transaction.iso_currency_code,
+              merchantName: transaction.merchant_name,
+              name: transaction.name,
+              pending: transaction.pending,
+              plaidItemId,
+              updatedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              set: {
+                accountId: transaction.account_id,
+                amount: transaction.amount,
+                authorizedDate: transaction.authorized_date,
+                category: transaction.category
+                  ? JSON.stringify(transaction.category)
+                  : null,
+                date: transaction.date,
+                isoCurrencyCode: transaction.iso_currency_code,
+                merchantName: transaction.merchant_name,
+                name: transaction.name,
+                pending: transaction.pending,
+                plaidItemId,
+                updatedAt: new Date(),
+              },
+              target: plaidTransaction.id,
+            })
+        )
+      );
+
+      if (removed.length > 0) {
+        await db.delete(plaidTransaction).where(
+          inArray(
+            plaidTransaction.id,
+            removed.map((transaction) => transaction.transaction_id)
+          )
+        );
+      }
+
+      cursor = nextCursor;
+      hasMore = response.data.has_more;
     }
 
-    log?.error(new Error("Plaid transactions request failed"));
-    throw error;
+    await db
+      .update(plaidItem)
+      .set({
+        cursor: cursor ?? null,
+        lastSyncCompletedAt: new Date(),
+        lastSyncError: null,
+        syncStatus: "complete",
+      })
+      .where(eq(plaidItem.id, plaidItemId));
+
+    return { status: "complete" as const };
+  } catch (error) {
+    const errorCode = getPlaidErrorCode(error);
+    const status = errorCode === "PRODUCT_NOT_READY" ? "pending" : "error";
+    await db
+      .update(plaidItem)
+      .set({
+        lastSyncError: errorCode ?? "PLAID_SYNC_FAILED",
+        syncStatus: status,
+      })
+      .where(eq(plaidItem.id, plaidItemId));
+    log?.set({ plaid: { errorCode, transactions: status } });
+    log?.error(new Error("Plaid transaction sync failed", { cause: error }));
+    return { status } as { status: "pending" | "error" };
+  }
+}
+
+function toTransactionResponse(
+  transaction: typeof plaidTransaction.$inferSelect
+) {
+  return {
+    accountId: transaction.accountId,
+    amount: transaction.amount,
+    category: parseCategory(transaction.category),
+    currency: transaction.isoCurrencyCode,
+    date: transaction.date,
+    merchantName: transaction.merchantName,
+    name: transaction.name,
+    pending: transaction.pending,
+    transactionId: transaction.id,
+  };
+}
+
+function parseCategory(value: string | null): string[] | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) &&
+      parsed.every((item) => typeof item === "string")
+      ? parsed
+      : null;
+  } catch {
+    return null;
   }
 }
 

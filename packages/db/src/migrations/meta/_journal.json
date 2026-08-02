@@ -29,6 +29,13 @@
       "when": 1785630112934,
       "tag": "0003_cultured_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785636251039,
+      "tag": "0004_typical_ezekiel",
+      "breakpoints": true
     }
   ]
 }
