@@ -28,7 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@dindin/ui/components/select";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 
@@ -62,6 +67,19 @@ function TransactionsPage() {
   const { session } = Route.useRouteContext();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const queryClient = useQueryClient();
+  const syncItem = useMutation(
+    orpc.plaid.syncItem.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: orpc.plaid.listTransactions.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: orpc.plaid.dashboardSummary.queryKey(),
+        });
+      },
+    })
+  );
   const transactionsQuery = useQuery(
     orpc.plaid.listTransactions.queryOptions({
       input: search,
@@ -128,9 +146,35 @@ function TransactionsPage() {
                   <CardTitle>Transaction history is syncing</CardTitle>
                   <CardDescription>
                     Plaid has connected the institution, but its Transactions
-                    product is not ready yet. Check this page again shortly.
+                    product is not ready yet. Try the sync again or check this
+                    page again shortly.
                   </CardDescription>
                 </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  {pendingConnections.map((connection) => (
+                    <div
+                      className="flex items-center justify-between gap-4 rounded-md border p-3"
+                      key={connection.itemId}
+                    >
+                      <span className="text-sm">
+                        {connection.institutionId ?? "Connected institution"}
+                      </span>
+                      <Button
+                        disabled={syncItem.isPending}
+                        onClick={() =>
+                          syncItem.mutate({ itemId: connection.itemId })
+                        }
+                        size="sm"
+                        variant="outline"
+                      >
+                        {syncItem.isPending &&
+                        syncItem.variables?.itemId === connection.itemId
+                          ? "Syncing..."
+                          : "Try again"}
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
               </Card>
             ) : null}
 
