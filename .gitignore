@@ -51,6 +51,7 @@ coverage
 
 # Misc
 *.tgz
+local.db
 .cache
 tmp
 temp
