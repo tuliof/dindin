@@ -17,6 +17,10 @@ interface BreadcrumbEntry {
 }
 
 function getBreadcrumbs(pathname: string): BreadcrumbEntry[] {
+  if (pathname === "/logs") {
+    return [{ label: "Debug" }, { label: "Logs" }];
+  }
+
   if (pathname === "/settings/general") {
     return [
       { href: "/dashboard", label: "Dashboard" },

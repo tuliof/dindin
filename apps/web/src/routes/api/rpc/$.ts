@@ -9,6 +9,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getRequest } from "@tanstack/react-start/server";
 import type { RequestLogger } from "evlog";
 
+import { publishApplicationEvent } from "@/lib/log-stream";
+
 const rpcHandler = new RPCHandler(appRouter, {
   interceptors: [
     onError((error) => {
@@ -35,6 +37,11 @@ type RequestWithEvlogContext = Request & {
 };
 
 async function handle({ request }: { request: Request }) {
+  const path = new URL(request.url).pathname;
+  publishApplicationEvent({
+    message: "RPC request received",
+    metadata: { endpoint: path, outcome: "started" },
+  });
   const requestWithContext = getRequest() as RequestWithEvlogContext;
   const { context: requestContext } = requestWithContext;
   const { log } = requestContext;
@@ -43,6 +50,16 @@ async function handle({ request }: { request: Request }) {
     prefix: "/api/rpc",
   });
   if (rpcResult.response) {
+    if (
+      rpcResult.response.ok &&
+      (path.includes("plaid.syncItem") ||
+        path.includes("plaid.exchangePublicToken"))
+    ) {
+      publishApplicationEvent({
+        message: "Sync request completed",
+        metadata: { endpoint: path, outcome: "completed" },
+      });
+    }
     return rpcResult.response;
   }
 
@@ -51,6 +68,16 @@ async function handle({ request }: { request: Request }) {
     prefix: "/api/rpc/api-reference",
   });
   if (apiResult.response) {
+    if (
+      apiResult.response.ok &&
+      (path.includes("plaid.syncItem") ||
+        path.includes("plaid.exchangePublicToken"))
+    ) {
+      publishApplicationEvent({
+        message: "Sync request completed",
+        metadata: { endpoint: path, outcome: "completed" },
+      });
+    }
     return apiResult.response;
   }
 
