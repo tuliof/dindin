@@ -54,6 +54,13 @@ export function PlaidSandboxPage({
       },
     })
   );
+  const createUpdateLinkToken = useMutation(
+    orpc.plaid.createUpdateLinkToken.mutationOptions({
+      onSuccess: ({ linkToken: nextLinkToken }) => {
+        setLinkToken(nextLinkToken);
+      },
+    })
+  );
   const removeConnection = useMutation(
     orpc.plaid.removeConnection.mutationOptions({
       onSuccess: () => {
@@ -83,6 +90,12 @@ export function PlaidSandboxPage({
   const handleCreateLinkToken = useCallback(() => {
     createLinkToken.mutate(undefined);
   }, [createLinkToken]);
+  const handleReauthenticate = useCallback(
+    (itemId: string) => {
+      createUpdateLinkToken.mutate({ itemId });
+    },
+    [createUpdateLinkToken]
+  );
   const handlePublicToken = useCallback(
     (publicToken: string) => exchangePublicToken.mutate({ publicToken }),
     [exchangePublicToken]
@@ -143,6 +156,7 @@ export function PlaidSandboxPage({
             ) : null}
             <ConnectionsDataTable
               connections={connections}
+              onReauthenticate={handleReauthenticate}
               onRemoveAccount={handleRemoveAccount}
               onRemoveConnection={handleRemoveConnection}
             />

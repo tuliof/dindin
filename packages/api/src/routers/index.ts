@@ -29,6 +29,35 @@ export const appRouter = {
 
       return { linkToken: response.data.link_token };
     }),
+    createUpdateLinkToken: protectedProcedure
+      .input(z.object({ itemId: z.string().min(1) }))
+      .handler(async ({ context, input }) => {
+        const item = await db
+          .select({ accessToken: plaidItem.accessToken })
+          .from(plaidItem)
+          .where(
+            and(
+              eq(plaidItem.itemId, input.itemId),
+              eq(plaidItem.userId, context.session.user.id)
+            )
+          )
+          .get();
+
+        if (!item) {
+          throw new Error("Plaid connection not found");
+        }
+
+        const response =
+          await createPlaidClientFromRuntimeConfig().linkTokenCreate({
+            access_token: item.accessToken,
+            client_name: "dindin sandbox",
+            country_codes: [CountryCode.Us],
+            language: "en",
+            user: { client_user_id: context.session.user.id },
+          });
+
+        return { linkToken: response.data.link_token };
+      }),
     exchangePublicToken: publicProcedure
       .input(z.object({ publicToken: z.string().min(1) }))
       .handler(async ({ context, input }) => {
@@ -52,7 +81,8 @@ export const appRouter = {
         const itemId = exchangeResponse.data.item_id;
         const userId = context.session?.user.id;
         let savedConnectionId: string | null = null;
-        let syncStatus: "complete" | "pending" | "error" = "pending";
+        let syncStatus: "complete" | "pending" | "error" | "reauth_required" =
+          "pending";
 
         if (userId) {
           const existingItem = await db
@@ -70,6 +100,8 @@ export const appRouter = {
                 accessToken,
                 institutionId,
                 institutionName,
+                itemErrorCode: null,
+                itemErrorMessage: null,
                 lastSyncError: null,
                 syncStatus: "pending",
                 transactionLastFailedAt: itemDetails?.transactionLastFailedAt,
@@ -185,6 +217,8 @@ export const appRouter = {
             institutionId: item.institutionId,
             institutionName:
               itemDetails?.institutionName ?? item.institutionName,
+            itemErrorCode: item.itemErrorCode,
+            itemErrorMessage: item.itemErrorMessage,
             itemId: item.itemId,
             savedAt: item.updatedAt,
             transactionLastFailedAt:
@@ -565,6 +599,8 @@ async function syncPlaidItem(
       .update(plaidItem)
       .set({
         cursor: cursor ?? null,
+        itemErrorCode: null,
+        itemErrorMessage: null,
         lastSyncCompletedAt: new Date(),
         lastSyncError: null,
         syncStatus: "complete",
@@ -574,17 +610,26 @@ async function syncPlaidItem(
     return { status: "complete" as const };
   } catch (error) {
     const errorCode = getPlaidErrorCode(error);
-    const status = errorCode === "PRODUCT_NOT_READY" ? "pending" : "error";
+    let status: "pending" | "error" | "reauth_required" = "error";
+    if (errorCode === "PRODUCT_NOT_READY") {
+      status = "pending";
+    } else if (errorCode === "ITEM_LOGIN_REQUIRED") {
+      status = "reauth_required";
+    }
     await db
       .update(plaidItem)
       .set({
+        itemErrorCode: errorCode,
+        itemErrorMessage: getPlaidErrorMessage(error),
         lastSyncError: errorCode ?? "PLAID_SYNC_FAILED",
         syncStatus: status,
       })
       .where(eq(plaidItem.id, plaidItemId));
     log?.set({ plaid: { errorCode, transactions: status } });
     log?.error(new Error("Plaid transaction sync failed", { cause: error }));
-    return { status } as { status: "pending" | "error" };
+    return { status } as {
+      status: "pending" | "error" | "reauth_required";
+    };
   }
 }
 
@@ -632,6 +677,21 @@ function getPlaidErrorCode(error: unknown): string | null {
 
   const code = (data as { error_code?: unknown }).error_code;
   return typeof code === "string" ? code : null;
+}
+
+function getPlaidErrorMessage(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+
+  const { response } = error as { response?: { data?: unknown } };
+  const data = response?.data;
+  if (typeof data !== "object" || data === null) {
+    return null;
+  }
+
+  const message = (data as { error_message?: unknown }).error_message;
+  return typeof message === "string" ? message : null;
 }
 
 function parseBalances(value: string, log?: RequestLogger): unknown {
