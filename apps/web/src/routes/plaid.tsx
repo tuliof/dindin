@@ -6,6 +6,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@dindin/ui/components/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@dindin/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,9 +37,20 @@ export function PlaidSandboxPage({
 } = {}) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [result, setResult] = useState<PlaidResult | null>(null);
+  const [activityPage, setActivityPage] = useState(1);
+  const [reauthItemId, setReauthItemId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const connectionsQuery = useQuery(
     orpc.plaid.listConnections.queryOptions({ enabled: showConnections })
+  );
+  const overviewQuery = useQuery(
+    orpc.plaid.syncOverview.queryOptions({ enabled: showConnections })
+  );
+  const activityQuery = useQuery(
+    orpc.plaid.syncActivity.queryOptions({
+      enabled: showConnections,
+      input: { page: activityPage, pageSize: 10 },
+    })
   );
   const connections = (connectionsQuery.data ?? []) as PlaidConnection[];
   const hasConnections = connections.length > 0;
@@ -48,6 +67,7 @@ export function PlaidSandboxPage({
       onSuccess: (nextResult) => {
         setResult(nextResult);
         setLinkToken(null);
+        setReauthItemId(null);
         queryClient.invalidateQueries({
           queryKey: orpc.plaid.listConnections.queryKey(),
         });
@@ -79,6 +99,21 @@ export function PlaidSandboxPage({
       },
     })
   );
+  const syncItem = useMutation(
+    orpc.plaid.syncItem.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: orpc.plaid.listConnections.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: orpc.plaid.syncOverview.queryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: orpc.plaid.syncActivity.queryKey(),
+        });
+      },
+    })
+  );
   const handleRemoveAccount = useCallback(
     (accountId: string) => removeAccount.mutate({ accountId }),
     [removeAccount]
@@ -92,13 +127,24 @@ export function PlaidSandboxPage({
   }, [createLinkToken]);
   const handleReauthenticate = useCallback(
     (itemId: string) => {
+      setReauthItemId(itemId);
       createUpdateLinkToken.mutate({ itemId });
     },
     [createUpdateLinkToken]
   );
+  const handleSync = useCallback(
+    (itemId: string) =>
+      syncItem.mutate({ action: "manual_sync", itemId, trigger: "manual" }),
+    [syncItem]
+  );
   const handlePublicToken = useCallback(
-    (publicToken: string) => exchangePublicToken.mutate({ publicToken }),
-    [exchangePublicToken]
+    (publicToken: string) =>
+      exchangePublicToken.mutate({
+        action: reauthItemId ? "reauthenticate" : "initial_connection",
+        publicToken,
+        trigger: reauthItemId ? "reauth" : "initial_connection",
+      }),
+    [exchangePublicToken, reauthItemId]
   );
 
   return (
@@ -125,14 +171,27 @@ export function PlaidSandboxPage({
             </CardContent>
           </Card>
         ) : null}
-        {showConnections && !connectionsQuery.isPending && !hasConnections ? (
+        {showConnections && !connectionsQuery.isPending ? (
+          <SyncOverview overview={overviewQuery.data} />
+        ) : null}
+        {showConnections && connectionsQuery.isError ? (
+          <Card>
+            <CardContent className="py-12 text-center text-destructive">
+              Unable to load connected institutions. Try again shortly.
+            </CardContent>
+          </Card>
+        ) : null}
+        {showConnections &&
+        !connectionsQuery.isPending &&
+        !connectionsQuery.isError &&
+        !hasConnections ? (
           <EmptyConnections
             linkToken={linkToken}
             onConnect={handleCreateLinkToken}
             onSuccess={handlePublicToken}
           />
         ) : null}
-        {showConnections && hasConnections ? (
+        {showConnections && !connectionsQuery.isError && hasConnections ? (
           <section className="flex flex-col gap-4">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -159,7 +218,28 @@ export function PlaidSandboxPage({
               onReauthenticate={handleReauthenticate}
               onRemoveAccount={handleRemoveAccount}
               onRemoveConnection={handleRemoveConnection}
+              onSync={handleSync}
             />
+            {activityQuery.isError ? (
+              <Card>
+                <CardContent className="py-10 text-center text-destructive">
+                  Unable to load sync activity. Run `bun run db:migrate` for a
+                  local database, then try again.
+                </CardContent>
+              </Card>
+            ) : (
+              <SyncActivity
+                activity={
+                  activityQuery.data ?? {
+                    page: activityPage,
+                    pageSize: 10,
+                    runs: [],
+                    total: 0,
+                  }
+                }
+                onPageChange={setActivityPage}
+              />
+            )}
           </section>
         ) : null}
         {showConnections ? null : (
@@ -223,6 +303,214 @@ export function PlaidSandboxPage({
       </div>
     </main>
   );
+}
+
+function SyncOverview({
+  overview,
+}: {
+  overview:
+    | {
+        accountCount: number;
+        connectedInstitutionCount: number;
+        issueCount: number;
+        latestSync: {
+          completedAt: Date | string | null;
+          startedAt: Date | string;
+        } | null;
+        syncingCount: number;
+      }
+    | undefined;
+}) {
+  return (
+    <section
+      aria-labelledby="sync-overview-title"
+      className="flex flex-col gap-4"
+    >
+      <div>
+        <h2
+          className="font-semibold text-xl tracking-tight"
+          id="sync-overview-title"
+        >
+          Sync overview
+        </h2>
+        <p className="mt-1 text-muted-foreground text-sm">
+          Latest successful synchronization:{" "}
+          {formatSyncDate(overview?.latestSync?.completedAt)}
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:bg-linear-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-4 dark:*:data-[slot=card]:bg-card">
+        <Card className="@container/card">
+          <CardHeader>
+            <CardDescription>Connected institutions</CardDescription>
+            <CardTitle className="font-semibold @[250px]/card:text-3xl text-2xl tabular-nums">
+              {overview ? overview.connectedInstitutionCount : "—"}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+
+        <Card className="@container/card">
+          <CardHeader>
+            <CardDescription>Accounts</CardDescription>
+            <CardTitle className="font-semibold @[250px]/card:text-3xl text-2xl tabular-nums">
+              {overview ? overview.accountCount : "—"}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+
+        <Card className="@container/card">
+          <CardHeader>
+            <CardDescription>Active syncs</CardDescription>
+            <CardTitle className="font-semibold @[250px]/card:text-3xl text-2xl tabular-nums">
+              {overview ? overview.syncingCount : "—"}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+
+        <Card className="@container/card">
+          <CardHeader>
+            <CardDescription>Issues</CardDescription>
+            <CardTitle className="font-semibold @[250px]/card:text-3xl text-2xl tabular-nums">
+              {overview ? overview.issueCount : "—"}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function SyncActivity({
+  activity,
+  onPageChange,
+}: {
+  activity: {
+    page: number;
+    pageSize: number;
+    runs: Array<{
+      addedCount: number;
+      id: string;
+      modifiedCount: number;
+      removedCount: number;
+      startedAt: Date | string;
+      status: string;
+      trigger: string;
+      institutionName: string | null;
+    }>;
+    total: number;
+  };
+  onPageChange: (page: number) => void;
+}) {
+  const lastPage = Math.ceil(activity.total / activity.pageSize);
+  const handlePrevious = useCallback(
+    () => onPageChange(activity.page - 1),
+    [activity.page, onPageChange]
+  );
+  const handleNext = useCallback(
+    () => onPageChange(activity.page + 1),
+    [activity.page, onPageChange]
+  );
+
+  return (
+    <section
+      aria-labelledby="sync-activity-title"
+      className="flex flex-col gap-4"
+    >
+      <div>
+        <h2
+          className="font-semibold text-xl tracking-tight"
+          id="sync-activity-title"
+        >
+          Sync activity
+        </h2>
+        <p className="mt-1 text-muted-foreground text-sm">
+          One row per sync attempt
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Started</TableHead>
+              <TableHead>Institution</TableHead>
+              <TableHead>Trigger</TableHead>
+              <TableHead>Changes</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {activity.runs.length ? (
+              activity.runs.map((run) => (
+                <TableRow key={run.id}>
+                  <TableCell>{formatSyncDate(run.startedAt)}</TableCell>
+                  <TableCell>
+                    {run.institutionName ?? "Connected institution"}
+                  </TableCell>
+                  <TableCell className="capitalize">{run.trigger}</TableCell>
+                  <TableCell>
+                    <span
+                      className="font-mono text-xs"
+                      title={`${run.addedCount} added, ${run.removedCount} removed, ${run.modifiedCount} modified`}
+                    >
+                      <span className="text-emerald-600">
+                        +{run.addedCount}
+                      </span>{" "}
+                      <span className="text-destructive">
+                        -{run.removedCount}
+                      </span>{" "}
+                      <span className="text-muted-foreground">
+                        ~{run.modifiedCount}
+                      </span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="capitalize">
+                    {run.status.replaceAll("_", " ")}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell className="h-24 text-center" colSpan={5}>
+                  No sync activity yet.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex items-center justify-between gap-3 text-muted-foreground text-sm">
+        <span>
+          Page {activity.page} of{" "}
+          {Math.max(1, Math.ceil(activity.total / activity.pageSize))}
+        </span>
+        <div className="flex gap-2">
+          <Button
+            disabled={activity.page <= 1}
+            onClick={handlePrevious}
+            variant="outline"
+          >
+            Previous
+          </Button>
+          <Button
+            disabled={activity.page >= lastPage}
+            onClick={handleNext}
+            variant="outline"
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function formatSyncDate(value: Date | string | null | undefined): string {
+  if (!value) {
+    return "Not synced yet";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function PlaidLinkButton({

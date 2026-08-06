@@ -12,7 +12,12 @@ import {
   verification,
 } from "./schema/auth";
 import { financialAccount } from "./schema/financial-account";
-import { plaidAccount, plaidItem, plaidTransaction } from "./schema/plaid";
+import {
+  plaidAccount,
+  plaidItem,
+  plaidSyncRun,
+  plaidTransaction,
+} from "./schema/plaid";
 
 const schema = {
   account,
@@ -20,6 +25,7 @@ const schema = {
   financialAccount,
   plaidAccount,
   plaidItem,
+  plaidSyncRun,
   plaidTransaction,
   session,
   sessionRelations,

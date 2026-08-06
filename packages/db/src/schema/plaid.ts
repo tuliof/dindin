@@ -77,6 +77,39 @@ export const plaidAccount = sqliteTable(
   ]
 );
 
+export const plaidSyncRun = sqliteTable(
+  "plaid_sync_run",
+  {
+    action: text("action").notNull(),
+    addedCount: integer("added_count").default(0).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    id: text("id").primaryKey(),
+    modifiedCount: integer("modified_count").default(0).notNull(),
+    pageCount: integer("page_count").default(0).notNull(),
+    plaidItemId: text("plaid_item_id")
+      .notNull()
+      .references(() => plaidItem.id, { onDelete: "cascade" }),
+    removedCount: integer("removed_count").default(0).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    status: text("status").notNull(),
+    trigger: text("trigger").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("plaid_sync_run_item_id_idx").on(table.plaidItemId),
+    index("plaid_sync_run_started_at_idx").on(table.startedAt),
+  ]
+);
+
 export const plaidTransaction = sqliteTable(
   "plaid_transaction",
   {

@@ -2,10 +2,11 @@ import { db } from "@dindin/db";
 import {
   plaidAccount,
   plaidItem,
+  plaidSyncRun,
   plaidTransaction,
 } from "@dindin/db/schema/plaid";
 import type { RouterClient } from "@orpc/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { RequestLogger } from "evlog";
 import { CountryCode, Products } from "plaid";
 import { z } from "zod";
@@ -187,7 +188,13 @@ export const appRouter = {
       };
     }),
     exchangePublicToken: publicProcedure
-      .input(z.object({ publicToken: z.string().min(1) }))
+      .input(
+        z.object({
+          action: z.string().default("initial_connection"),
+          publicToken: z.string().min(1),
+          trigger: z.string().default("initial_connection"),
+        })
+      )
       .handler(async ({ context, input }) => {
         const plaidClient = createPlaidClientFromRuntimeConfig();
         const exchangeResponse = await plaidClient.itemPublicTokenExchange({
@@ -284,7 +291,8 @@ export const appRouter = {
             plaidClient,
             connectionId,
             accessToken,
-            context.log
+            context.log,
+            { action: input.action, trigger: input.trigger }
           );
           syncStatus = syncResult.status;
         }
@@ -348,7 +356,9 @@ export const appRouter = {
             itemErrorCode: item.itemErrorCode,
             itemErrorMessage: item.itemErrorMessage,
             itemId: item.itemId,
-            savedAt: item.updatedAt,
+            lastSyncCompletedAt: item.lastSyncCompletedAt,
+            lastSyncError: item.lastSyncError,
+            syncStatus: item.syncStatus,
             transactionLastFailedAt:
               itemDetails?.transactionLastFailedAt ??
               item.transactionLastFailedAt,
@@ -536,7 +546,13 @@ export const appRouter = {
         return { removed: Boolean(account) };
       }),
     removeConnection: protectedProcedure
-      .input(z.object({ itemId: z.string().min(1) }))
+      .input(
+        z.object({
+          action: z.string().default("manual_sync"),
+          itemId: z.string().min(1),
+          trigger: z.string().default("manual"),
+        })
+      )
       .handler(async ({ context, input }) => {
         const item = await db
           .select()
@@ -564,8 +580,65 @@ export const appRouter = {
         await db.delete(plaidItem).where(eq(plaidItem.id, item.id));
         return { removed: true };
       }),
+    syncActivity: protectedProcedure
+      .input(
+        z.object({
+          page: z.number().int().min(1).default(1),
+          pageSize: z.number().int().min(5).max(50).default(10),
+        })
+      )
+      .handler(async ({ context, input }) => {
+        const ownedItems = db
+          .select({ id: plaidItem.id })
+          .from(plaidItem)
+          .where(eq(plaidItem.userId, context.session.user.id));
+        const itemIds = (await ownedItems).map((item) => item.id);
+        if (itemIds.length === 0) {
+          return {
+            page: input.page,
+            pageSize: input.pageSize,
+            runs: [],
+            total: 0,
+          };
+        }
+        const where = inArray(plaidSyncRun.plaidItemId, itemIds);
+        const [{ total }] = await db
+          .select({ total: count() })
+          .from(plaidSyncRun)
+          .where(where);
+        const runs = await db
+          .select({
+            action: plaidSyncRun.action,
+            addedCount: plaidSyncRun.addedCount,
+            completedAt: plaidSyncRun.completedAt,
+            errorCode: plaidSyncRun.errorCode,
+            errorMessage: plaidSyncRun.errorMessage,
+            id: plaidSyncRun.id,
+            institutionName: plaidItem.institutionName,
+            itemId: plaidItem.itemId,
+            modifiedCount: plaidSyncRun.modifiedCount,
+            pageCount: plaidSyncRun.pageCount,
+            removedCount: plaidSyncRun.removedCount,
+            startedAt: plaidSyncRun.startedAt,
+            status: plaidSyncRun.status,
+            trigger: plaidSyncRun.trigger,
+          })
+          .from(plaidSyncRun)
+          .innerJoin(plaidItem, eq(plaidSyncRun.plaidItemId, plaidItem.id))
+          .where(where)
+          .orderBy(desc(plaidSyncRun.startedAt))
+          .limit(input.pageSize)
+          .offset((input.page - 1) * input.pageSize);
+        return { page: input.page, pageSize: input.pageSize, runs, total };
+      }),
     syncItem: protectedProcedure
-      .input(z.object({ itemId: z.string().min(1) }))
+      .input(
+        z.object({
+          action: z.string().default("manual_sync"),
+          itemId: z.string().min(1),
+          trigger: z.string().default("manual"),
+        })
+      )
       .handler(async ({ context, input }) => {
         const item = await db
           .select()
@@ -586,9 +659,57 @@ export const appRouter = {
           createPlaidClientFromRuntimeConfig(),
           item.id,
           item.accessToken,
-          context.log
+          context.log,
+          { action: input.action, trigger: input.trigger }
         );
       }),
+    syncOverview: protectedProcedure.handler(async ({ context }) => {
+      const items = await db
+        .select()
+        .from(plaidItem)
+        .where(eq(plaidItem.userId, context.session.user.id));
+      const accounts = items.length
+        ? await db
+            .select({ id: plaidAccount.id })
+            .from(plaidAccount)
+            .where(
+              inArray(
+                plaidAccount.plaidItemId,
+                items.map((item) => item.id)
+              )
+            )
+        : [];
+      const latestRun = await db
+        .select({
+          completedAt: plaidSyncRun.completedAt,
+          startedAt: plaidSyncRun.startedAt,
+        })
+        .from(plaidSyncRun)
+        .innerJoin(plaidItem, eq(plaidSyncRun.plaidItemId, plaidItem.id))
+        .where(
+          and(
+            eq(plaidItem.userId, context.session.user.id),
+            eq(plaidSyncRun.status, "complete")
+          )
+        )
+        .orderBy(desc(plaidSyncRun.startedAt))
+        .limit(1)
+        .get();
+
+      return {
+        accountCount: accounts.length,
+        connectedInstitutionCount: items.filter(
+          (item) => item.syncStatus !== "reauth_required"
+        ).length,
+        issueCount: items.filter(
+          (item) =>
+            item.syncStatus === "error" || item.syncStatus === "reauth_required"
+        ).length,
+        latestSync: latestRun ?? null,
+        syncingCount: items.filter((item) => item.syncStatus === "syncing")
+          .length,
+      };
+    }),
   },
   privateData: protectedProcedure.handler(({ context }) => ({
     message: "This is private",
@@ -638,7 +759,11 @@ async function syncPlaidItem(
   plaidClient: ReturnType<typeof createPlaidClientFromRuntimeConfig>,
   plaidItemId: string,
   accessToken: string,
-  log?: RequestLogger
+  log?: RequestLogger,
+  context: { action: string; trigger: string } = {
+    action: "manual_sync",
+    trigger: "manual",
+  }
 ) {
   const item = await db
     .select({ cursor: plaidItem.cursor })
@@ -646,6 +771,21 @@ async function syncPlaidItem(
     .where(eq(plaidItem.id, plaidItemId))
     .get();
   let cursor = item?.cursor ?? undefined;
+  const runId = crypto.randomUUID();
+  let addedCount = 0;
+  let modifiedCount = 0;
+  let removedCount = 0;
+  let pageCount = 0;
+
+  await db.insert(plaidSyncRun).values({
+    action: context.action,
+    id: runId,
+    plaidItemId,
+    startedAt: new Date(),
+    status: "running",
+    trigger: context.trigger,
+    updatedAt: new Date(),
+  });
 
   await db
     .update(plaidItem)
@@ -668,6 +808,10 @@ async function syncPlaidItem(
         next_cursor: nextCursor,
         removed,
       } = response.data;
+      addedCount += added.length;
+      modifiedCount += modified.length;
+      removedCount += removed.length;
+      pageCount += 1;
 
       await Promise.all(
         [...added, ...modified].map((transaction) =>
@@ -734,8 +878,26 @@ async function syncPlaidItem(
         syncStatus: "complete",
       })
       .where(eq(plaidItem.id, plaidItemId));
+    await db
+      .update(plaidSyncRun)
+      .set({
+        addedCount,
+        completedAt: new Date(),
+        modifiedCount,
+        pageCount,
+        removedCount,
+        status: "complete",
+        updatedAt: new Date(),
+      })
+      .where(eq(plaidSyncRun.id, runId));
 
-    return { status: "complete" as const };
+    return {
+      addedCount,
+      modifiedCount,
+      pageCount,
+      removedCount,
+      status: "complete" as const,
+    };
   } catch (error) {
     const errorCode = getPlaidErrorCode(error);
     let status: "pending" | "error" | "reauth_required" = "error";
@@ -753,9 +915,27 @@ async function syncPlaidItem(
         syncStatus: status,
       })
       .where(eq(plaidItem.id, plaidItemId));
+    await db
+      .update(plaidSyncRun)
+      .set({
+        addedCount,
+        completedAt: new Date(),
+        errorCode,
+        errorMessage: getPlaidErrorMessage(error),
+        modifiedCount,
+        pageCount,
+        removedCount,
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(plaidSyncRun.id, runId));
     log?.set({ plaid: { errorCode, transactions: status } });
     log?.error(new Error("Plaid transaction sync failed", { cause: error }));
-    return { status } as {
+    return { addedCount, modifiedCount, pageCount, removedCount, status } as {
+      addedCount: number;
+      modifiedCount: number;
+      pageCount: number;
+      removedCount: number;
       status: "pending" | "error" | "reauth_required";
     };
   }

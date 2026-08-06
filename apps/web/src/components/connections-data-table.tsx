@@ -19,6 +19,12 @@ import {
   TableRow,
 } from "@dindin/ui/components/table";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@dindin/ui/components/tooltip";
+import {
   type ColumnDef,
   flexRender,
   getCoreRowModel,
@@ -50,7 +56,9 @@ export interface PlaidConnection {
   itemErrorCode: string | null;
   itemErrorMessage: string | null;
   itemId: string;
-  savedAt: Date | string;
+  lastSyncCompletedAt: Date | string | null;
+  lastSyncError: string | null;
+  syncStatus: string;
   transactionLastFailedAt: string | null;
   transactionLastSuccessfulAt: string | null;
   webhookCode: string | null;
@@ -72,11 +80,13 @@ export function ConnectionsDataTable({
   onRemoveAccount,
   onRemoveConnection,
   onReauthenticate,
+  onSync,
 }: {
   connections: PlaidConnection[];
   onRemoveAccount: (accountId: string) => void;
   onRemoveConnection: (itemId: string) => void;
   onReauthenticate: (itemId: string) => void;
+  onSync: (itemId: string) => void;
 }) {
   const rows = useMemo(
     () =>
@@ -96,8 +106,13 @@ export function ConnectionsDataTable({
   );
   const columns = useMemo(
     () =>
-      createColumns({ onReauthenticate, onRemoveAccount, onRemoveConnection }),
-    [onRemoveAccount, onRemoveConnection, onReauthenticate]
+      createColumns({
+        onReauthenticate,
+        onRemoveAccount,
+        onRemoveConnection,
+        onSync,
+      }),
+    [onRemoveAccount, onRemoveConnection, onReauthenticate, onSync]
   );
   const table = useReactTable({
     columns,
@@ -131,7 +146,14 @@ export function ConnectionsDataTable({
             table.getRowModel().rows.map((row) => (
               <TableRow key={row.id}>
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
+                  <TableCell
+                    className={
+                      cell.column.id === "actions"
+                        ? "sticky right-0 bg-background"
+                        : undefined
+                    }
+                    key={cell.id}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
@@ -154,10 +176,12 @@ function createColumns({
   onRemoveAccount,
   onRemoveConnection,
   onReauthenticate,
+  onSync,
 }: {
   onRemoveAccount: (accountId: string) => void;
   onRemoveConnection: (itemId: string) => void;
   onReauthenticate: (itemId: string) => void;
+  onSync: (itemId: string) => void;
 }): ColumnDef<ConnectionRow>[] {
   return [
     {
@@ -195,6 +219,15 @@ function createColumns({
                 {row.original.account.officialName}
               </span>
             ) : null}
+            <span className="text-muted-foreground text-xs">
+              {row.original.account?.type}
+              {row.original.account?.subtype
+                ? ` / ${row.original.account.subtype}`
+                : ""}
+              {row.original.account?.mask
+                ? ` · •••• ${row.original.account.mask}`
+                : ""}
+            </span>
           </div>
         );
       },
@@ -202,32 +235,12 @@ function createColumns({
     },
     {
       cell: ({ row }) =>
-        row.original.kind === "account" ? (
-          <span className="capitalize">
-            {row.original.account?.subtype ?? row.original.account?.type}
-          </span>
-        ) : null,
-      header: "Type",
-    },
-    {
-      cell: ({ row }) =>
-        row.original.kind === "account" ? (
-          <span className="font-mono text-muted-foreground text-xs">
-            {row.original.account?.mask
-              ? `•••• ${row.original.account.mask}`
-              : "—"}
-          </span>
-        ) : null,
-      header: "Mask",
-    },
-    {
-      cell: ({ row }) =>
         row.original.kind === "institution" ? (
           <span className="text-muted-foreground text-xs">
-            {formatTransactionStatus(row.original.institution)}
+            {formatSyncStatus(row.original.institution)}
           </span>
         ) : null,
-      header: "Transactions",
+      header: "Sync status",
     },
     {
       cell: ({ row }) =>
@@ -241,7 +254,9 @@ function createColumns({
     {
       cell: ({ row }) => (
         <span className="text-muted-foreground text-xs">
-          {formatSyncedAt(row.original.institution?.savedAt)}
+          {formatSyncedAt(
+            row.original.institution?.lastSyncCompletedAt ?? undefined
+          )}
         </span>
       ),
       header: "Last synced",
@@ -252,6 +267,7 @@ function createColumns({
           onReauthenticate={onReauthenticate}
           onRemoveAccount={onRemoveAccount}
           onRemoveConnection={onRemoveConnection}
+          onSync={onSync}
           row={row.original}
         />
       ),
@@ -261,22 +277,23 @@ function createColumns({
   ];
 }
 
-function formatTransactionStatus(
-  connection: PlaidConnection | undefined
-): string {
+function formatSyncStatus(connection: PlaidConnection | undefined): string {
   if (!connection) {
     return "—";
   }
-  if (connection.transactionLastSuccessfulAt) {
-    return `Updated ${formatSyncedAt(connection.transactionLastSuccessfulAt)}`;
+  if (connection.syncStatus === "reauth_required") {
+    return "Reconnect required";
   }
-  if (connection.itemErrorCode) {
-    return `Action needed: ${connection.itemErrorCode}`;
+  if (connection.syncStatus === "syncing") {
+    return "Syncing now";
   }
-  if (connection.transactionLastFailedAt) {
-    return `Failed ${formatSyncedAt(connection.transactionLastFailedAt)}`;
+  if (connection.syncStatus === "error") {
+    return connection.lastSyncError ?? "Sync failed";
   }
-  return "Waiting for update";
+  if (connection.syncStatus === "pending") {
+    return "Pending";
+  }
+  return "Up to date";
 }
 
 function formatWebhookStatus(connection: PlaidConnection | undefined): string {
@@ -290,11 +307,13 @@ function ConnectionAction({
   onRemoveAccount,
   onRemoveConnection,
   onReauthenticate,
+  onSync,
   row,
 }: {
   onRemoveAccount: (accountId: string) => void;
   onRemoveConnection: (itemId: string) => void;
   onReauthenticate: (itemId: string) => void;
+  onSync: (itemId: string) => void;
   row: ConnectionRow;
 }) {
   const [open, setOpen] = useState(false);
@@ -313,6 +332,8 @@ function ConnectionAction({
     row.kind === "institution"
       ? `Remove ${row.institution?.institutionName ?? "institution"}`
       : `Remove ${row.account?.name}`;
+  const removeButtonLabel =
+    row.kind === "institution" ? "Remove connection" : "Remove account";
   const canReauthenticate =
     row.kind === "institution" &&
     row.institution?.itemErrorCode === "ITEM_LOGIN_REQUIRED";
@@ -321,43 +342,84 @@ function ConnectionAction({
       onReauthenticate(row.institution.itemId);
     }
   }, [onReauthenticate, row.institution]);
+  const canSync = row.kind === "institution" && !canReauthenticate;
+  const handleSync = useCallback(() => {
+    if (row.institution) {
+      onSync(row.institution.itemId);
+    }
+  }, [onSync, row.institution]);
 
   return (
-    <div className="flex justify-end gap-1">
-      {canReauthenticate ? (
-        <Button
-          aria-label={`Reconnect ${row.institution?.institutionName ?? "institution"}`}
-          onClick={handleReauthenticate}
-          size="icon-sm"
-          title="Reconnect institution"
-          variant="ghost"
-        >
-          <RefreshCwIcon />
-        </Button>
-      ) : null}
-      <AlertDialog onOpenChange={setOpen} open={open}>
-        <AlertDialogTrigger
-          render={<Button aria-label={label} size="icon-sm" variant="ghost" />}
-        >
-          <Trash2Icon />
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{label}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the {row.kind} from your dindin view. Plaid data may
-              be available again if you reconnect the institution.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm} variant="destructive">
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    <TooltipProvider>
+      <div className="flex justify-end gap-1">
+        {canSync ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  aria-label="Sync now"
+                  onClick={handleSync}
+                  size="icon-sm"
+                  title="Sync now"
+                  variant="ghost"
+                />
+              }
+            >
+              <RefreshCwIcon />
+            </TooltipTrigger>
+            <TooltipContent>Sync now</TooltipContent>
+          </Tooltip>
+        ) : null}
+        {canReauthenticate ? (
+          <Button
+            aria-label={`Reconnect ${row.institution?.institutionName ?? "institution"}`}
+            className="text-yellow-600"
+            onClick={handleReauthenticate}
+            size="icon-sm"
+            title="Reconnect institution"
+            variant="ghost"
+          >
+            <RefreshCwIcon />
+          </Button>
+        ) : null}
+        <AlertDialog onOpenChange={setOpen} open={open}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <AlertDialogTrigger
+                  render={
+                    <Button
+                      aria-label={removeButtonLabel}
+                      size="icon-sm"
+                      title={removeButtonLabel}
+                      variant="ghost"
+                    />
+                  }
+                />
+              }
+            >
+              <Trash2Icon />
+            </TooltipTrigger>
+            <TooltipContent>{removeButtonLabel}</TooltipContent>
+          </Tooltip>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{label}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the {row.kind} from your dindin view. Plaid data
+                may be available again if you reconnect the institution.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirm} variant="destructive">
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }
 

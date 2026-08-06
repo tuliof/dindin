@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <meta content="Demo mockup of the DinDin sync page" name="description">
+    <title>Sync | DinDin demo</title>
+    <!-- Institution expand hover options: 1) subtle border + shadow (recommended default), 2) very light neutral surface tint, 3) left accent rail/border emphasis. -->
+    <style>
+    :root {
+      --ink: #17231f;
+      --muted: #68746f;
+      --line: #dfe7e1;
+      --paper: #f7faf7;
+      --card: #ffffff;
+      --mint: #e1f3e8;
+      --green: #26764d;
+      --amber: #946014;
+      --amber-wash: #fff4df;
+      --red: #b4483d;
+      --red-wash: #fff0ee;
+      --shadow: 0 16px 38px rgba(31, 64, 47, 0.07);
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      line-height: 1.5;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 40px));
+      padding: 58px 0 80px;
+      margin: 0 auto;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    h1,
+    h2,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 680px;
+      margin-bottom: 14px;
+      font-size: clamp(2.25rem, 5vw, 4.25rem);
+      line-height: 0.98;
+      letter-spacing: -0.06em;
+    }
+
+    .intro {
+      max-width: 600px;
+      margin-bottom: 42px;
+      font-size: 1.05rem;
+      color: var(--muted);
+    }
+
+    .section-heading {
+      display: flex;
+      gap: 20px;
+      align-items: end;
+      justify-content: space-between;
+      margin: 42px 0 16px;
+    }
+
+    h2 {
+      margin-bottom: 0;
+      font-size: 1.35rem;
+      letter-spacing: -0.025em;
+    }
+
+    .section-note {
+      margin: 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .summary-card,
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .summary-card {
+      min-height: 150px;
+      padding: 20px;
+    }
+
+    .summary-label {
+      display: block;
+      margin-bottom: 22px;
+      font-size: 0.83rem;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .summary-value {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 1.65rem;
+      font-weight: 750;
+      letter-spacing: -0.04em;
+    }
+
+    .summary-detail {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .summary-card.warning .summary-value {
+      color: var(--amber);
+    }
+
+    .summary-card.danger .summary-value {
+      color: var(--red);
+    }
+
+    .panel {
+      overflow: hidden;
+    }
+
+    .institution-row {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 22px;
+    }
+
+    .institution-group + .institution-group {
+      border-top: 1px solid var(--line);
+    }
+
+    .institution-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .icon-button {
+      width: 38px;
+      padding: 8px 0;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .institution-info {
+      display: flex;
+      flex: 1;
+      gap: 14px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .institution-mark {
+      display: grid;
+      flex: 0 0 42px;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: var(--green);
+      background: var(--mint);
+      border-radius: 12px;
+    }
+
+    .institution-name,
+    .account-name {
+      margin: 0;
+    }
+
+    .institution-name {
+      font-weight: 750;
+    }
+
+    .account-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.86rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .institution-details {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      margin-top: 3px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .expand-button {
+      display: grid;
+      flex: 1;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      min-width: 0;
+      padding: 10px 12px;
+      color: var(--ink);
+      text-align: left;
+      background: #fff;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      transition:
+        color 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease;
+    }
+
+    .expand-button:hover {
+      color: var(--green);
+      border-color: #c4d3c8;
+      box-shadow: 0 2px 8px rgba(31, 64, 47, 0.06);
+    }
+
+    .expand-button:focus-visible {
+      position: relative;
+      z-index: 1;
+    }
+
+    .expand-button .institution-mark {
+      grid-row: 1;
+      grid-column: 1;
+    }
+
+    .expand-button .institution-name {
+      display: block;
+    }
+
+    .expand-button .institution-details {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .expand-button .institution-copy {
+      grid-column: 2;
+      min-width: 0;
+    }
+
+    .expand-icon {
+      grid-column: 3;
+      font-size: 0.8rem;
+      transition: transform 160ms ease;
+    }
+
+    .expand-button[aria-expanded="true"] .expand-icon {
+      transform: rotate(90deg);
+    }
+
+    .account-list {
+      padding: 0 22px 18px 86px;
+    }
+
+    .account-table {
+      width: 100%;
+      min-width: 680px;
+      font-size: 0.84rem;
+      border-collapse: collapse;
+    }
+
+    .account-type {
+      color: var(--muted);
+    }
+
+    .institution-meta {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      font-size: 0.82rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .status {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      font-weight: 700;
+    }
+
+    .status::before {
+      width: 7px;
+      height: 7px;
+      content: "";
+      background: currentColor;
+      border-radius: 50%;
+    }
+
+    .status.success {
+      color: var(--green);
+    }
+
+    .status.warning {
+      color: var(--amber);
+    }
+
+    .status.error {
+      color: var(--red);
+    }
+
+    button {
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 0.84rem;
+      font-weight: 750;
+      color: var(--green);
+      cursor: pointer;
+      background: #fff;
+      border: 1px solid #b8cfc0;
+      border-radius: 9px;
+    }
+
+    button:hover {
+      background: var(--mint);
+    }
+
+    button:focus-visible {
+      outline: 3px solid #9ed2b3;
+      outline-offset: 2px;
+    }
+
+    .institution-actions button {
+      white-space: nowrap;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      white-space: nowrap;
+      border: 0;
+      clip: rect(0, 0, 0, 0);
+    }
+
+    table {
+      width: 100%;
+      min-width: 900px;
+      font-size: 0.86rem;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 15px 18px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: #f4f8f4;
+    }
+
+    .table-wrap th:last-child,
+    .table-wrap td:last-child {
+      position: sticky;
+      right: 0;
+      background: var(--paper);
+      box-shadow: -8px 0 12px -12px rgba(31, 55, 43, 0.45);
+    }
+
+    .table-wrap th:last-child {
+      background: #f4f8f4;
+    }
+
+    tbody tr + tr {
+      border-top: 1px solid var(--line);
+    }
+
+    td:first-child {
+      color: var(--muted);
+    }
+
+    .account-table th,
+    .account-table td {
+      padding: 12px 14px;
+      text-align: left;
+      border-top: 1px solid var(--line);
+    }
+
+    .account-table th {
+      padding-top: 0;
+      font-size: 0.7rem;
+      background: transparent;
+    }
+
+    .account-table td:first-child {
+      color: var(--ink);
+    }
+
+    .count {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .table-status {
+      font-weight: 750;
+    }
+
+    .table-status.complete {
+      color: var(--green);
+    }
+
+    .table-status.failed {
+      color: var(--red);
+    }
+
+    .table-status.pending {
+      color: var(--amber);
+    }
+
+    .table-status.error {
+      color: var(--red);
+    }
+
+    @media (max-width: 800px) {
+      main {
+        padding-top: 36px;
+      }
+
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .institution-row {
+        flex-direction: column;
+        gap: 14px;
+        align-items: flex-start;
+      }
+
+      .institution-info,
+      .expand-button {
+        width: 100%;
+      }
+
+      .institution-meta {
+        justify-content: space-between;
+        width: 100%;
+      }
+
+      .institution-actions {
+        justify-content: space-between;
+        width: 100%;
+      }
+
+      .account-list {
+        padding-left: 22px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      main {
+        width: min(100% - 28px, 1180px);
+        padding-bottom: 50px;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .section-heading {
+        flex-direction: column;
+        gap: 5px;
+        align-items: flex-start;
+      }
+
+      .institution-row {
+        padding: 17px;
+      }
+
+      .institution-meta {
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
+      }
+    }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">DinDin / account connections</p>
+      <h1>Keep every account in sync.</h1>
+      <p class="intro">
+        Review your connected institutions, resolve connection issues, and see a
+        clear history of the activity that keeps your transactions current.
+      </p>
+
+      <section aria-labelledby="overview-title">
+        <div class="section-heading">
+          <h2 id="overview-title">Sync overview</h2>
+          <p class="section-note">Status across 3 connected institutions</p>
+        </div>
+        <div class="summary-grid">
+          <article class="summary-card">
+            <span class="summary-label">Last successful sync</span>
+            <strong class="summary-value">Today, 9:42 AM</strong>
+            <span class="summary-detail">Harbor Federal accounts checked</span>
+          </article>
+          <article class="summary-card warning">
+            <span class="summary-label">Connection issues</span>
+            <strong class="summary-value">1 institution</strong>
+            <span class="summary-detail">Reconnect Northstar Credit Union</span>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Pending syncs</span>
+            <strong class="summary-value">1 institution</strong>
+            <span class="summary-detail">Expected within 15 minutes</span>
+          </article>
+          <article class="summary-card danger">
+            <span class="summary-label">Recent failures</span>
+            <strong class="summary-value">1 this week</strong>
+            <span class="summary-detail">Try again to resume syncing</span>
+          </article>
+        </div>
+      </section>
+
+      <section aria-labelledby="institutions-title">
+        <div class="section-heading">
+          <h2 id="institutions-title">Connected institutions</h2>
+          <p class="section-note">Demo connections</p>
+        </div>
+        <div class="panel">
+          <section aria-labelledby="harbor-title" class="institution-group">
+            <div class="institution-row">
+              <div class="institution-info">
+                <button
+                  aria-controls="harbor-accounts"
+                  aria-expanded="true"
+                  aria-label="Collapse Harbor Federal accounts"
+                  class="expand-button"
+                  type="button"
+                >
+                  <span aria-hidden="true" class="institution-mark">HF</span>
+                  <span class="institution-copy">
+                    <span class="institution-name" id="harbor-title">
+                      Harbor Federal
+                    </span>
+                    <span class="institution-details">
+                      <span>2 accounts</span>
+                      <span class="status success">Succeeded</span>
+                    </span>
+                  </span>
+                  <span aria-hidden="true" class="expand-icon">&#9656;</span>
+                </button>
+              </div>
+              <div class="institution-actions">
+                <button type="button">Sync now</button>
+                <button
+                  aria-label="More options for Harbor Federal"
+                  class="icon-button"
+                  type="button"
+                >
+                  &hellip;
+                </button>
+              </div>
+            </div>
+            <div class="account-list" id="harbor-accounts">
+              <table class="account-table">
+                <caption class="visually-hidden">
+                  Accounts connected through Harbor Federal
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Type / subtype</th>
+                    <th scope="col">Mask</th>
+                    <th scope="col">Transactions</th>
+                    <th scope="col">Last synced</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      Everyday Checking
+                      <span class="account-name">**** 1842</span>
+                    </td>
+                    <td class="account-type">Bank / checking</td>
+                    <td>•••• 1842</td>
+                    <td><span class="status success">Succeeded</span></td>
+                    <td>Today, 9:42 AM</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      Rainy Day Savings
+                      <span class="account-name">**** 7305</span>
+                    </td>
+                    <td class="account-type">Bank / savings</td>
+                    <td>•••• 7305</td>
+                    <td><span class="status success">Succeeded</span></td>
+                    <td>Today, 9:42 AM</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section aria-labelledby="northstar-title" class="institution-group">
+            <div class="institution-row">
+              <div class="institution-info">
+                <button
+                  aria-controls="northstar-accounts"
+                  aria-expanded="false"
+                  aria-label="Expand Northstar Credit Union accounts"
+                  class="expand-button"
+                  type="button"
+                >
+                  <span aria-hidden="true" class="institution-mark">NP</span>
+                  <span class="institution-copy">
+                    <span class="institution-name" id="northstar-title">
+                      Northstar Credit Union
+                    </span>
+                    <span class="institution-details">
+                      <span>2 accounts</span>
+                      <span class="status error">Error connecting</span>
+                      <span>ITEM_LOGIN_REQUIRED</span>
+                    </span>
+                  </span>
+                  <span aria-hidden="true" class="expand-icon">&#9656;</span>
+                </button>
+              </div>
+              <div class="institution-actions">
+                <button type="button">Reconnect</button>
+                <button
+                  aria-label="More options for Northstar Credit Union"
+                  class="icon-button"
+                  type="button"
+                >
+                  &hellip;
+                </button>
+              </div>
+            </div>
+            <div class="account-list" hidden id="northstar-accounts">
+              <table class="account-table">
+                <caption class="visually-hidden">
+                  Accounts connected through Northstar Credit Union
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Type / subtype</th>
+                    <th scope="col">Mask</th>
+                    <th scope="col">Transactions</th>
+                    <th scope="col">Last synced</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      Joint Savings <span class="account-name">**** 0627</span>
+                    </td>
+                    <td class="account-type">Bank / savings</td>
+                    <td>•••• 0627</td>
+                    <td><span class="status error">Error connecting</span></td>
+                    <td>2 days ago</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      Travel Rewards Card
+                      <span class="account-name">**** 9051</span>
+                    </td>
+                    <td class="account-type">Card / credit</td>
+                    <td>•••• 9051</td>
+                    <td><span class="status error">Error connecting</span></td>
+                    <td>2 days ago</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section aria-labelledby="summit-title" class="institution-group">
+            <div class="institution-row">
+              <div class="institution-info">
+                <button
+                  aria-controls="summit-accounts"
+                  aria-expanded="false"
+                  aria-label="Expand Summit Lending accounts"
+                  class="expand-button"
+                  type="button"
+                >
+                  <span aria-hidden="true" class="institution-mark">SL</span>
+                  <span class="institution-copy">
+                    <span class="institution-name" id="summit-title">
+                      Summit Lending
+                    </span>
+                    <span class="institution-details">
+                      <span>1 account</span>
+                      <span class="status warning">Pending</span>
+                      <span>PRODUCT_NOT_READY</span>
+                    </span>
+                  </span>
+                  <span aria-hidden="true" class="expand-icon">&#9656;</span>
+                </button>
+              </div>
+              <div class="institution-actions">
+                <button type="button">Try again</button>
+                <button
+                  aria-label="More options for Summit Lending"
+                  class="icon-button"
+                  type="button"
+                >
+                  &hellip;
+                </button>
+              </div>
+            </div>
+            <div class="account-list" hidden id="summit-accounts">
+              <table class="account-table">
+                <caption class="visually-hidden">
+                  Accounts connected through Summit Lending
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Type / subtype</th>
+                    <th scope="col">Mask</th>
+                    <th scope="col">Transactions</th>
+                    <th scope="col">Last synced</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      Home Loan <span class="account-name">**** 4419</span>
+                    </td>
+                    <td class="account-type">Loan / mortgage</td>
+                    <td>•••• 4419</td>
+                    <td><span class="status warning">Pending</span></td>
+                    <td>Not synced yet</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section aria-labelledby="activity-title">
+        <div class="section-heading">
+          <h2 id="activity-title">Sync activity</h2>
+          <p class="section-note">One row per sync run, most recent first</p>
+        </div>
+        <div class="panel table-wrap">
+          <table>
+            <caption class="visually-hidden">
+              Sync-run history. Each row represents one sync run.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Started</th>
+                <th scope="col">Institution</th>
+                <th scope="col">Action</th>
+                <th scope="col">Trigger</th>
+                <th scope="col">Duration / completion</th>
+                <th scope="col">Changes</th>
+                <th scope="col">Status</th>
+                <th scope="col">Next action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Jun 18, 9:42 AM</td>
+                <td>Harbor Federal</td>
+                <td>Full sync</td>
+                <td>Scheduled</td>
+                <td>24 sec</td>
+                <td class="count">
+                  <span title="18 added, 0 removed, 4 modified">+18 -0 ~4</span>
+                </td>
+                <td class="table-status complete">Succeeded</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>Jun 18, 9:41 AM</td>
+                <td>Northstar Credit Union</td>
+                <td>Full sync</td>
+                <td>Scheduled</td>
+                <td>31 sec</td>
+                <td class="count">
+                  <span title="6 added, 1 removed, 0 modified">+6 -1 ~0</span>
+                </td>
+                <td class="table-status error">Error connecting</td>
+                <td><button type="button">Reconnect</button></td>
+              </tr>
+              <tr>
+                <td>Jun 17, 3:08 PM</td>
+                <td>Summit Lending</td>
+                <td>Reconnect</td>
+                <td>Manual</td>
+                <td>8 sec</td>
+                <td class="count">
+                  <span title="0 added, 0 removed, 0 modified">+0 -0 ~0</span>
+                </td>
+                <td class="table-status failed">Failed</td>
+                <td><button type="button">Try again</button></td>
+              </tr>
+              <tr>
+                <td>Jun 17, 8:12 AM</td>
+                <td>Harbor Federal</td>
+                <td>Incremental sync</td>
+                <td>Scheduled</td>
+                <td>In progress</td>
+                <td class="count">
+                  <span title="Changes not available">—</span>
+                </td>
+                <td class="table-status pending">Pending</td>
+                <td><button type="button">Try again</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script>
+    "use strict";
+
+    for (const button of document.querySelectorAll(".expand-button")) {
+      button.addEventListener("click", () => {
+        const accountList = document.getElementById(
+          button.getAttribute("aria-controls")
+        );
+        const isExpanded = button.getAttribute("aria-expanded") === "true";
+
+        button.setAttribute("aria-expanded", String(!isExpanded));
+        accountList.hidden = isExpanded;
+        button.setAttribute(
+          "aria-label",
+          button
+            .getAttribute("aria-label")
+            .replace(
+              isExpanded ? "Collapse" : "Expand",
+              isExpanded ? "Expand" : "Collapse"
+            )
+        );
+      });
+    }
+    </script>
+  </body>
+</html>
