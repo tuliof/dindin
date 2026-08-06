@@ -45,6 +45,38 @@ const projectOwner = process.env.GITHUB_PROJECT_OWNER ?? DEFAULT_OWNER;
 const repository = process.env.GITHUB_REPOSITORY ?? DEFAULT_REPOSITORY;
 const OWNER_PATTERN = /^## Owner\n([^\n]+)/m;
 const ISSUE_URL_PATTERN = /\/issues\/(\d+)$/;
+const PULL_REQUEST_URL_PATTERN = /\/pull\/(\d+)(?:[/?#].*)?$/;
+const NUMBER_PATTERN = /^\d+$/;
+const FAILED_CHECK_CONCLUSIONS = [
+  "FAILURE",
+  "ERROR",
+  "CANCELLED",
+  "TIMED_OUT",
+  "ACTION_REQUIRED",
+  "STARTUP_FAILURE",
+];
+
+export interface CheckReport {
+  conclusion: string | null;
+  detailsUrl: string | null;
+  name: string;
+  status: string | null;
+}
+
+export interface CheckAggregate {
+  failed: CheckReport[];
+  pending: CheckReport[];
+  state: "pass" | "pending" | "failure";
+}
+
+export function rejectMergeMethodOption(
+  options: Map<string, string>,
+  command: "merge" | "auto-merge"
+): void {
+  if (options.has("method")) {
+    fail(`${command} does not accept --method; squash is always used`);
+  }
+}
 
 function fail(message: string): never {
   throw new Error(message);
@@ -116,6 +148,115 @@ function normalizeStatus(value: string): StatusName {
 
 function normalizeOption(value: string): string {
   return value.toLowerCase().replace(/\s+/g, "-");
+}
+
+export function parsePullRequestReference(value: string): string {
+  if (NUMBER_PATTERN.test(value)) {
+    return value;
+  }
+  const match = value.match(PULL_REQUEST_URL_PATTERN);
+  return match?.[1] ?? fail(`Invalid pull request reference: ${value}`);
+}
+
+export function parseIssueNumber(value: string): number {
+  if (!NUMBER_PATTERN.test(value)) {
+    fail("--issue must contain only decimal digits");
+  }
+  const issue = Number(value);
+  if (!Number.isSafeInteger(issue) || issue < 1) {
+    fail("--issue must be a positive decimal issue number");
+  }
+  return issue;
+}
+
+function jsonRecords(value: unknown): JsonRecord[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (entry): entry is JsonRecord =>
+          typeof entry === "object" && entry !== null
+      )
+    : [];
+}
+
+function checkDetailsUrl(check: JsonRecord): string | null {
+  if (typeof check.detailsUrl === "string") {
+    return check.detailsUrl;
+  }
+  if (typeof check.targetUrl === "string") {
+    return check.targetUrl;
+  }
+  return null;
+}
+
+function checkName(check: JsonRecord): string {
+  return String(check.name ?? check.context ?? "unnamed check");
+}
+
+export function aggregateChecks(value: unknown): CheckAggregate {
+  const checks = jsonRecords(value).map((check) => ({
+    conclusion: typeof check.conclusion === "string" ? check.conclusion : null,
+    detailsUrl: checkDetailsUrl(check),
+    name: checkName(check),
+    status: typeof check.status === "string" ? check.status : null,
+  }));
+  const failed = checks.filter((check) =>
+    FAILED_CHECK_CONCLUSIONS.includes(String(check.conclusion).toUpperCase())
+  );
+  const pending = checks.filter(
+    (check) => check.status?.toUpperCase() !== "COMPLETED" && !check.conclusion
+  );
+  let state: CheckAggregate["state"] = "pass";
+  if (pending.length > 0) {
+    state = "pending";
+  }
+  if (failed.length > 0) {
+    state = "failure";
+  }
+  return { failed, pending, state };
+}
+
+export function mergePreconditionFailures(
+  data: JsonRecord,
+  issue: number,
+  taskStatus: string
+): string[] {
+  const failures: string[] = [];
+  const checks = aggregateChecks(data.statusCheckRollup);
+  const referencesIssue = jsonRecords(data.closingIssuesReferences).some(
+    (reference) => reference.number === issue
+  );
+  if (data.state !== "OPEN") {
+    failures.push("PR is not open");
+  }
+  if (data.isDraft === true) {
+    failures.push("PR is a draft");
+  }
+  if (jsonRecords(data.commits).length === 0) {
+    failures.push("PR has no commits");
+  }
+  if (checks.pending.length > 0) {
+    failures.push("PR has pending checks");
+  }
+  if (checks.failed.length > 0) {
+    failures.push("PR has failed checks");
+  }
+  if (data.mergeable !== "MERGEABLE") {
+    failures.push(
+      `PR is not mergeable: ${String(data.mergeable ?? "unknown")}`
+    );
+  }
+  if (data.mergeStateStatus !== "CLEAN") {
+    failures.push(
+      `PR merge state is not clean: ${String(data.mergeStateStatus ?? "unknown")}`
+    );
+  }
+  if (taskStatus !== "review") {
+    failures.push(`Linked project task is not in review: ${taskStatus}`);
+  }
+  if (!referencesIssue) {
+    failures.push(`PR does not reference issue #${issue}`);
+  }
+  return failures;
 }
 
 async function projectItems(): Promise<JsonRecord[]> {
@@ -253,7 +394,7 @@ async function taskRows(): Promise<TaskRow[]> {
   return items.flatMap((item) => {
     const number = issueNumber(item);
     const issue = number === undefined ? undefined : issuesByNumber.get(number);
-    if (!issue) {
+    if (number === undefined || !issue) {
       return [];
     }
     return [
@@ -408,23 +549,14 @@ async function deliveryReport(pullRequest: string): Promise<JsonRecord> {
     "number,url,state,isDraft,mergedAt,commits,statusCheckRollup,closingIssuesReferences",
   ]);
   const commits = Array.isArray(data.commits) ? data.commits : [];
-  const checks = Array.isArray(data.statusCheckRollup)
-    ? data.statusCheckRollup.filter(
-        (check): check is JsonRecord =>
-          typeof check === "object" && check !== null
-      )
-    : [];
-  const failedChecks = checks.filter((check) =>
-    ["FAILURE", "ERROR", "CANCELLED"].includes(String(check.conclusion))
-  );
+  const checkAggregate = aggregateChecks(data.statusCheckRollup);
+  const failedChecks = checkAggregate.failed;
   const hasCommits = commits.length > 0;
   const readyForReview = data.state === "OPEN" && data.isDraft === false;
   const merged = Boolean(data.mergedAt);
   return {
     commitCount: commits.length,
-    failedChecks: failedChecks.map(
-      (check) => check.name ?? check.context ?? null
-    ),
+    failedChecks: failedChecks.map((check) => check.name),
     hasCommits,
     merged,
     pullRequest: data.url,
@@ -433,6 +565,185 @@ async function deliveryReport(pullRequest: string): Promise<JsonRecord> {
     validForDone: hasCommits && merged && failedChecks.length === 0,
     validForReview: hasCommits && readyForReview && failedChecks.length === 0,
   };
+}
+
+function pullRequestData(pullRequest: string): Promise<JsonRecord> {
+  return runJson<JsonRecord>([
+    "pr",
+    "view",
+    parsePullRequestReference(pullRequest),
+    "--repo",
+    repository,
+    "--json",
+    "number,url,state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefOid,reviewDecision,commits,statusCheckRollup,mergedAt,closingIssuesReferences",
+  ]);
+}
+
+export function prStatusReport(data: JsonRecord): JsonRecord {
+  const checks = aggregateChecks(data.statusCheckRollup);
+  const commits = jsonRecords(data.commits);
+  const readyForReview = data.state === "OPEN" && data.isDraft === false;
+  return {
+    baseSha: data.baseRefOid ?? null,
+    commitCount: commits.length,
+    failedChecks: checks.failed.map((check) => check.name),
+    headSha: data.headRefOid ?? null,
+    isDraft: data.isDraft ?? null,
+    mergeability: data.mergeable ?? null,
+    mergeState: data.mergeStateStatus ?? null,
+    number: data.number ?? null,
+    pendingChecks: checks.pending.map((check) => check.name),
+    reviewDecision: data.reviewDecision ?? null,
+    state: data.state ?? null,
+    url: data.url ?? null,
+    validForDone:
+      commits.length > 0 &&
+      data.state === "MERGED" &&
+      checks.failed.length === 0,
+    validForReview:
+      commits.length > 0 && readyForReview && checks.failed.length === 0,
+  };
+}
+
+async function prStatus(options: Map<string, string>): Promise<void> {
+  const pullRequest = requiredOption(options, "pr");
+  const data = await pullRequestData(pullRequest);
+  print(prStatusReport(data));
+}
+
+async function prChecks(options: Map<string, string>): Promise<void> {
+  const pullRequest = requiredOption(options, "pr");
+  const data = await pullRequestData(pullRequest);
+  const checks = aggregateChecks(data.statusCheckRollup);
+  print({
+    checks: jsonRecords(data.statusCheckRollup).map((check) => ({
+      conclusion:
+        typeof check.conclusion === "string" ? check.conclusion : null,
+      detailsUrl: checkDetailsUrl(check),
+      name: checkName(check),
+      status: typeof check.status === "string" ? check.status : null,
+    })),
+    failureChecks: checks.failed.map((check) => check.name),
+    pendingChecks: checks.pending.map((check) => check.name),
+    state: checks.state,
+    url: data.url ?? null,
+  });
+}
+
+async function createPullRequest(options: Map<string, string>): Promise<void> {
+  const title = requiredOption(options, "title");
+  const body = requiredOption(options, "body");
+  const base = options.get("base") ?? "main";
+  const args = [
+    "pr",
+    "create",
+    "--repo",
+    repository,
+    "--base",
+    base,
+    "--title",
+    title,
+    "--body",
+    body,
+  ];
+  const head = options.get("head");
+  if (head) {
+    args.push("--head", head);
+  }
+  const url = await runGh(args);
+  print({ base, title, url });
+}
+
+function autoMergePreconditionFailures(data: JsonRecord): string[] {
+  const failures: string[] = [];
+  const checks = aggregateChecks(data.statusCheckRollup);
+  if (data.state !== "OPEN") {
+    failures.push("PR is not open");
+  }
+  if (data.isDraft === true) {
+    failures.push("PR is a draft");
+  }
+  if (jsonRecords(data.commits).length === 0) {
+    failures.push("PR has no commits");
+  }
+  if (checks.failed.length > 0) {
+    failures.push("PR has failed checks");
+  }
+  if (data.mergeable !== "MERGEABLE") {
+    failures.push(
+      `PR is not mergeable: ${String(data.mergeable ?? "unknown")}`
+    );
+  }
+  if (data.mergeStateStatus !== "CLEAN") {
+    failures.push(
+      `PR merge state is not clean: ${String(data.mergeStateStatus ?? "unknown")}`
+    );
+  }
+  return failures;
+}
+
+async function enableAutoMerge(options: Map<string, string>): Promise<void> {
+  const pullRequest = requiredOption(options, "pr");
+  rejectMergeMethodOption(options, "auto-merge");
+  if (options.get("review-verdict") !== "approve") {
+    fail(
+      "Auto-merge requires the explicit local Hunk verdict --review-verdict approve"
+    );
+  }
+
+  const data = await pullRequestData(pullRequest);
+  const failures = autoMergePreconditionFailures(data);
+  if (failures.length > 0) {
+    fail(`Auto-merge preconditions failed: ${failures.join("; ")}`);
+  }
+
+  const result = await runGh([
+    "pr",
+    "merge",
+    parsePullRequestReference(pullRequest),
+    "--repo",
+    repository,
+    "--auto",
+    "--squash",
+  ]);
+  print({ method: "squash", pullRequest, result });
+}
+
+async function mergePullRequest(options: Map<string, string>): Promise<void> {
+  const issue = parseIssueNumber(requiredOption(options, "issue"));
+  const pullRequest = requiredOption(options, "pr");
+  rejectMergeMethodOption(options, "merge");
+  if (options.get("review-verdict") !== "approve") {
+    fail(
+      "Merge requires the explicit local Hunk verdict --review-verdict approve"
+    );
+  }
+
+  const [data, items] = await Promise.all([
+    pullRequestData(pullRequest),
+    projectItems(),
+  ]);
+  const item = findItem(items, issue);
+  const taskStatus = normalizeOption(String(item.status ?? "missing"));
+  const failures = mergePreconditionFailures(data, issue, taskStatus);
+  if (failures.length > 0) {
+    fail(`Merge preconditions failed: ${failures.join("; ")}`);
+  }
+
+  const mergeOutput = await runGh([
+    "pr",
+    "merge",
+    parsePullRequestReference(pullRequest),
+    "--repo",
+    repository,
+    "--squash",
+  ]);
+  print({
+    issue,
+    mergeMethod: "squash",
+    mergeResult: mergeOutput,
+    postMerge: await deliveryReport(pullRequest),
+  });
 }
 
 async function validateDelivery(
@@ -592,6 +903,26 @@ async function runSimpleCommand(
   command: string,
   options: Map<string, string>
 ): Promise<boolean> {
+  if (command === "pr-status") {
+    await prStatus(options);
+    return true;
+  }
+  if (command === "pr-checks") {
+    await prChecks(options);
+    return true;
+  }
+  if (command === "pr-create") {
+    await createPullRequest(options);
+    return true;
+  }
+  if (command === "auto-merge") {
+    await enableAutoMerge(options);
+    return true;
+  }
+  if (command === "merge") {
+    await mergePullRequest(options);
+    return true;
+  }
   if (command === "list") {
     await list();
     return true;
@@ -714,10 +1045,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  const issue = Number(options.get("issue"));
-  if (!Number.isInteger(issue) || issue < 1) {
+  const rawIssue = options.get("issue");
+  if (!rawIssue) {
     fail("This command requires --issue <number>");
   }
+  const issue = parseIssueNumber(rawIssue);
   if (await runIssueCommand(command, issue, options)) {
     return;
   }
@@ -725,11 +1057,11 @@ async function main(): Promise<void> {
   fail(`Unknown command: ${command}`);
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+if (process.argv[1]?.endsWith("scripts/github-project.ts")) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
-
-export {};
